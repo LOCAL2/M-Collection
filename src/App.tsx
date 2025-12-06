@@ -21,7 +21,7 @@ function App() {
   const [uploadCount, setUploadCount] = useState({ current: 0, total: 0 });
   const [downloadProgress, setDownloadProgress] = useState<{ current: number; total: number; cancelled: boolean } | null>(null);
   const downloadCancelledRef = useRef(false);
-  const [downloadingImageId, setDownloadingImageId] = useState<number | null>(null);
+  const [downloadingImageId, setDownloadingImageId] = useState<string | number | null>(null);
   const [imageDownloadProgress, setImageDownloadProgress] = useState(0);
 
   useEffect(() => {
@@ -329,7 +329,7 @@ function App() {
         }
       }
 
-      const blob = new Blob(chunks);
+      const blob = new Blob(chunks as BlobPart[]);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -1194,7 +1194,7 @@ function App() {
                       </div>
 
                       {/* Download Progress Overlay */}
-                      {downloadingImageId === image.id && (
+                      {downloadingImageId !== null && downloadingImageId === image.id && (
                         <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center z-20 pointer-events-none">
                           <div className="w-3/4 space-y-3">
                             <div className="relative w-16 h-16 mx-auto">
