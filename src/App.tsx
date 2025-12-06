@@ -530,7 +530,7 @@ function App() {
               />
             </div>
             <div className="mt-4 text-center space-y-2">
-              <p className="text-white text-lg font-medium">{viewImage.uploader_name}</p>
+              <p className="text-white text-lg font-medium">จากผู้ใช้: {viewImage.uploader_name}</p>
               <p className="text-white/70 text-sm">
                 {new Date(viewImage.created_at).toLocaleDateString('th-TH', {
                   year: 'numeric',
@@ -1239,7 +1239,7 @@ function App() {
                       {/* Text overlay - แสดงตลอดเวลา */}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-100 transition-opacity pointer-events-none">
                         <div className="absolute bottom-0 left-0 right-0 p-4 space-y-1">
-                          <p className="text-white text-sm font-medium drop-shadow-lg">{image.uploader_name}</p>
+                          <p className="text-white text-sm font-medium drop-shadow-lg">จากผู้ใช้ {image.uploader_name}</p>
                           <p className="text-white/90 text-xs drop-shadow-lg">
                             {new Date(image.created_at).toLocaleDateString('th-TH', {
                               year: 'numeric',
