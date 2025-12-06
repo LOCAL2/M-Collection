@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase, type Image } from './lib/supabase';
 
 function App() {
@@ -20,6 +20,9 @@ function App() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [uploadCount, setUploadCount] = useState({ current: 0, total: 0 });
   const [downloadProgress, setDownloadProgress] = useState<{ current: number; total: number; cancelled: boolean } | null>(null);
+  const downloadCancelledRef = useRef(false);
+  const [downloadingImageId, setDownloadingImageId] = useState<number | null>(null);
+  const [imageDownloadProgress, setImageDownloadProgress] = useState(0);
 
   useEffect(() => {
     const savedImagesPerPage = localStorage.getItem('imagesPerPage');
@@ -296,13 +299,38 @@ function App() {
 
   const handleDownloadImage = async (image: Image) => {
     try {
-      const { data, error } = await supabase.storage
+      setDownloadingImageId(image.id);
+      setImageDownloadProgress(0);
+
+      // สร้าง XMLHttpRequest เพื่อ track progress
+      const { data: { publicUrl } } = supabase.storage
         .from('gallery-images')
-        .download(image.storage_path);
+        .getPublicUrl(image.storage_path);
 
-      if (error) throw error;
+      const response = await fetch(publicUrl);
+      if (!response.ok) throw new Error('Download failed');
 
-      const url = URL.createObjectURL(data);
+      const reader = response.body?.getReader();
+      const contentLength = parseInt(response.headers.get('content-length') || '0');
+      
+      let receivedLength = 0;
+      const chunks: Uint8Array[] = [];
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          chunks.push(value);
+          receivedLength += value.length;
+          
+          const progress = contentLength > 0 ? (receivedLength / contentLength) * 100 : 0;
+          setImageDownloadProgress(Math.round(progress));
+        }
+      }
+
+      const blob = new Blob(chunks);
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = image.filename;
@@ -311,12 +339,17 @@ function App() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
+      setDownloadingImageId(null);
+      setImageDownloadProgress(0);
+
       setToast({
         message: 'ดาวน์โหลดสำเร็จ',
         type: 'success'
       });
     } catch (error) {
       console.error('Error downloading image:', error);
+      setDownloadingImageId(null);
+      setImageDownloadProgress(0);
       setToast({
         message: 'เกิดข้อผิดพลาดในการดาวน์โหลด',
         type: 'error'
@@ -334,6 +367,7 @@ function App() {
     }
 
     // เริ่มแสดง modal
+    downloadCancelledRef.current = false;
     setDownloadProgress({ current: 0, total: images.length, cancelled: false });
 
     let successCount = 0;
@@ -341,7 +375,7 @@ function App() {
 
     for (let i = 0; i < images.length; i++) {
       // เช็คว่ายกเลิกหรือไม่
-      if (downloadProgress?.cancelled) {
+      if (downloadCancelledRef.current) {
         break;
       }
 
@@ -377,11 +411,13 @@ function App() {
       await new Promise(resolve => setTimeout(resolve, 300));
     }
 
+    const wasCancelled = downloadCancelledRef.current;
+
     // ปิด modal
     setDownloadProgress(null);
 
     // แสดงผลลัพธ์
-    if (downloadProgress?.cancelled) {
+    if (wasCancelled) {
       setToast({
         message: `ยกเลิกการดาวน์โหลด • สำเร็จ ${successCount} ไฟล์`,
         type: 'info'
@@ -541,6 +577,58 @@ function App() {
                 className="flex-1 px-6 py-3 rounded-xl font-medium transition-all bg-red-500 text-white hover:bg-red-600 cursor-pointer"
               >
                 ลบ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Download Progress Modal */}
+      {downloadProgress && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div
+            className={`w-full max-w-md p-8 rounded-3xl border backdrop-blur-xl ${
+              theme === 'dark'
+                ? 'bg-gray-900/80 border-gray-700'
+                : 'bg-white/80 border-gray-200'
+            }`}
+          >
+            <h3 className={`text-2xl font-bold mb-4 ${theme === 'dark' ? 'text-white' : 'text-black'}`}>
+              กำลังดาวน์โหลด
+            </h3>
+            
+            <div className="space-y-4">
+              {/* Progress bar */}
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className={theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}>
+                    {downloadProgress.current} / {downloadProgress.total} ไฟล์
+                  </span>
+                  <span className={theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}>
+                    {Math.round((downloadProgress.current / downloadProgress.total) * 100)}%
+                  </span>
+                </div>
+                <div className={`w-full h-3 rounded-full overflow-hidden ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-200'}`}>
+                  <div 
+                    className="h-full bg-blue-500 transition-all duration-300"
+                    style={{ width: `${(downloadProgress.current / downloadProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Cancel button */}
+              <button
+                onClick={() => {
+                  downloadCancelledRef.current = true;
+                  setDownloadProgress(prev => prev ? { ...prev, cancelled: true } : null);
+                }}
+                className={`w-full px-6 py-3 rounded-xl font-medium transition-all cursor-pointer ${
+                  theme === 'dark'
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-red-500 hover:bg-red-600 text-white'
+                }`}
+              >
+                ยกเลิก
               </button>
             </div>
           </div>
@@ -820,7 +908,7 @@ function App() {
                     theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
                   }`}
                 >
-                  {userName}
+                  ชื่อผู้ใช้ {userName}
                 </span>
               )}
               <button
@@ -1104,6 +1192,49 @@ function App() {
                           </button>
                         )}
                       </div>
+
+                      {/* Download Progress Overlay */}
+                      {downloadingImageId === image.id && (
+                        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center z-20 pointer-events-none">
+                          <div className="w-3/4 space-y-3">
+                            <div className="relative w-16 h-16 mx-auto">
+                              <svg className="w-16 h-16 transform -rotate-90">
+                                <circle
+                                  cx="32"
+                                  cy="32"
+                                  r="28"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                  fill="none"
+                                  className="text-gray-700"
+                                />
+                                <circle
+                                  cx="32"
+                                  cy="32"
+                                  r="28"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                  fill="none"
+                                  strokeDasharray={`${2 * Math.PI * 28}`}
+                                  strokeDashoffset={`${2 * Math.PI * 28 * (1 - imageDownloadProgress / 100)}`}
+                                  className="text-blue-500 transition-all duration-300"
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="text-white text-sm font-bold">{imageDownloadProgress}%</span>
+                              </div>
+                            </div>
+                            <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+                              <div 
+                                className="bg-blue-500 h-full transition-all duration-300"
+                                style={{ width: `${imageDownloadProgress}%` }}
+                              />
+                            </div>
+                            <p className="text-white text-xs text-center">กำลังดาวน์โหลด...</p>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Text overlay - แสดงตลอดเวลา */}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-100 transition-opacity pointer-events-none">
