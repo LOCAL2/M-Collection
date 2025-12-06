@@ -23,6 +23,32 @@ function App() {
   const downloadCancelledRef = useRef(false);
   const [downloadingImageId, setDownloadingImageId] = useState<string | number | null>(null);
   const [imageDownloadProgress, setImageDownloadProgress] = useState(0);
+  const pendingFilesRef = useRef<FileList | null>(null);
+
+  // ฟังก์ชันแปลงชื่อภาษาไทยเป็นภาษาอังกฤษ (transliteration)
+  const transliterateThaiToEng = (text: string): string => {
+    const thaiToEng: { [key: string]: string } = {
+      'ก': 'k', 'ข': 'kh', 'ฃ': 'kh', 'ค': 'kh', 'ฅ': 'kh', 'ฆ': 'kh',
+      'ง': 'ng', 'จ': 'j', 'ฉ': 'ch', 'ช': 'ch', 'ซ': 's', 'ฌ': 'ch',
+      'ญ': 'y', 'ฎ': 'd', 'ฏ': 't', 'ฐ': 'th', 'ฑ': 'th', 'ฒ': 'th',
+      'ณ': 'n', 'ด': 'd', 'ต': 't', 'ถ': 'th', 'ท': 'th', 'ธ': 'th',
+      'น': 'n', 'บ': 'b', 'ป': 'p', 'ผ': 'ph', 'ฝ': 'f', 'พ': 'ph',
+      'ฟ': 'f', 'ภ': 'ph', 'ม': 'm', 'ย': 'y', 'ร': 'r', 'ฤ': 'rue',
+      'ล': 'l', 'ฦ': 'lue', 'ว': 'w', 'ศ': 's', 'ษ': 's', 'ส': 's',
+      'ห': 'h', 'ฬ': 'l', 'อ': 'o', 'ฮ': 'h',
+      'ะ': 'a', 'ั': 'a', 'า': 'a', 'ำ': 'am', 'ิ': 'i', 'ี': 'i',
+      'ึ': 'ue', 'ื': 'ue', 'ุ': 'u', 'ู': 'u', 'เ': 'e', 'แ': 'ae',
+      'โ': 'o', 'ใ': 'ai', 'ไ': 'ai', 'ๅ': '', '็': '', '่': '',
+      '้': '', '๊': '', '๋': '', '์': '', 'ํ': '', 'ๆ': '', '฿': ''
+    };
+
+    return text
+      .split('')
+      .map(char => thaiToEng[char] || char)
+      .join('')
+      .replace(/[^a-zA-Z0-9]/g, '') // ลบอักขระพิเศษออก
+      .toLowerCase();
+  };
 
   useEffect(() => {
     const savedImagesPerPage = localStorage.getItem('imagesPerPage');
@@ -34,7 +60,12 @@ function App() {
     if (savedTheme) setTheme(savedTheme);
 
     const savedName = localStorage.getItem('userName');
-    if (savedName) setUserName(savedName);
+    if (savedName) {
+      setUserName(savedName);
+    } else {
+      // ถ้ายังไม่มีชื่อ บังคับให้ใส่ชื่อทันที
+      setShowNamePrompt(true);
+    }
 
     fetchImages();
     subscribeToChanges();
@@ -123,6 +154,8 @@ function App() {
     }
 
     if (!userName) {
+      // เก็บไฟล์ไว้ก่อน แล้วค่อย upload หลังจากใส่ชื่อเสร็จ
+      pendingFilesRef.current = files;
       setShowNamePrompt(true);
       return;
     }
@@ -167,12 +200,14 @@ function App() {
           continue;
         }
 
-        // สร้างชื่อไฟล์ที่ไม่ซ้ำ
+        // สร้างชื่อไฟล์ที่ไม่ซ้ำ และแปลงชื่อผู้ใช้เป็นภาษาอังกฤษ
         const fileExt = file.name.split('.').pop();
         const timestamp = Date.now();
         const random = Math.random().toString(36).substring(2, 11);
         const fileName = `${timestamp}-${random}.${fileExt}`;
-        const filePath = `${userName}/${fileName}`;
+        // แปลงชื่อผู้ใช้เป็นภาษาอังกฤษ (ถ้าเป็นภาษาไทย)
+        const safeUserName = transliterateThaiToEng(userName) || 'user';
+        const filePath = `${safeUserName}/${fileName}`;
 
         // Upload ไฟล์
         const { error: uploadError } = await supabase.storage
@@ -270,6 +305,16 @@ function App() {
     if (userName.trim()) {
       localStorage.setItem('userName', userName.trim());
       setShowNamePrompt(false);
+      
+      // ถ้ามีไฟล์รออยู่ ให้ upload ทันที
+      if (pendingFilesRef.current) {
+        const files = pendingFilesRef.current;
+        pendingFilesRef.current = null;
+        // ใช้ setTimeout เพื่อให้ modal ปิดก่อน
+        setTimeout(() => {
+          handleUpload(files);
+        }, 100);
+      }
     }
   };
 
@@ -836,10 +881,10 @@ function App() {
             }`}
           >
             <h3 className={`text-2xl font-bold mb-2 ${theme === 'dark' ? 'text-white' : 'text-black'}`}>
-              ใส่ชื่อเล่นของคุณ
+              ยินดีต้อนรับ! 👋
             </h3>
             <p className={`text-sm mb-4 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-              กรุณาใส่ชื่อเล่นก่อนอัปโหลดรูปครั้งแรก (จะบันทึกไว้ให้อัตโนมัติ)
+              กรุณาใส่ชื่อเล่นของคุณเพื่อเริ่มใช้งาน (ใช้ได้ทั้งภาษาไทยและอังกฤษ)
             </p>
             <input
               type="text"
@@ -854,6 +899,19 @@ function App() {
                   : 'bg-white border-gray-300 text-black placeholder-gray-400'
               }`}
             />
+            {userName && /[\u0E00-\u0E7F]/.test(userName) && (
+              <div className={`mt-3 p-3 rounded-lg text-xs ${theme === 'dark' ? 'bg-blue-900/20 text-blue-300 border border-blue-700/30' : 'bg-blue-100 text-blue-800 border border-blue-300'}`}>
+                <div className="flex items-start gap-2">
+                  <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div>
+                    <p className="font-medium">ชื่อของคุณจะถูกแปลงเป็น: <span className="font-bold">{transliterateThaiToEng(userName)}</span></p>
+                    <p className="mt-1 opacity-80">เพื่อความเข้ากันได้กับระบบ (แต่จะแสดงชื่อภาษาไทยตามปกติ)</p>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="flex gap-3 mt-4">
               <button
                 onClick={handleNameSubmit}
@@ -870,16 +928,22 @@ function App() {
               >
                 ยืนยัน
               </button>
-              <button
-                onClick={() => setShowNamePrompt(false)}
-                className={`px-6 py-3 rounded-xl font-medium transition-all cursor-pointer ${
-                  theme === 'dark'
-                    ? 'bg-gray-800 text-white hover:bg-gray-700'
-                    : 'bg-gray-200 text-black hover:bg-gray-300'
-                }`}
-              >
-                ยกเลิก
-              </button>
+              {/* แสดงปุ่มยกเลิกเฉพาะเมื่อมีไฟล์รออยู่ (ไม่ใช่ครั้งแรก) */}
+              {pendingFilesRef.current && (
+                <button
+                  onClick={() => {
+                    setShowNamePrompt(false);
+                    pendingFilesRef.current = null; // ล้างไฟล์ที่รออยู่
+                  }}
+                  className={`px-6 py-3 rounded-xl font-medium transition-all cursor-pointer ${
+                    theme === 'dark'
+                      ? 'bg-gray-800 text-white hover:bg-gray-700'
+                      : 'bg-gray-200 text-black hover:bg-gray-300'
+                  }`}
+                >
+                  ยกเลิก
+                </button>
+              )}
             </div>
           </div>
         </div>
