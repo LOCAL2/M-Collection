@@ -19,6 +19,7 @@ function App() {
   const [viewImage, setViewImage] = useState<Image | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [uploadCount, setUploadCount] = useState({ current: 0, total: 0 });
+  const [downloadProgress, setDownloadProgress] = useState<{ current: number; total: number; cancelled: boolean } | null>(null);
 
   useEffect(() => {
     const savedImagesPerPage = localStorage.getItem('imagesPerPage');
@@ -332,15 +333,20 @@ function App() {
       return;
     }
 
-    setToast({
-      message: `กำลังดาวน์โหลด ${images.length} ไฟล์...`,
-      type: 'info'
-    });
+    // เริ่มแสดง modal
+    setDownloadProgress({ current: 0, total: images.length, cancelled: false });
 
     let successCount = 0;
     let failCount = 0;
 
-    for (const image of images) {
+    for (let i = 0; i < images.length; i++) {
+      // เช็คว่ายกเลิกหรือไม่
+      if (downloadProgress?.cancelled) {
+        break;
+      }
+
+      const image = images[i];
+      
       try {
         const { data, error } = await supabase.storage
           .from('gallery-images')
@@ -358,14 +364,29 @@ function App() {
         URL.revokeObjectURL(url);
 
         successCount++;
-        await new Promise(resolve => setTimeout(resolve, 300)); // หน่วงเวลาเล็กน้อยระหว่างดาวน์โหลด
       } catch (error) {
         console.error(`Error downloading ${image.filename}:`, error);
         failCount++;
       }
+
+      // อัปเดตความคืบหน้า
+      setDownloadProgress(prev => 
+        prev ? { ...prev, current: i + 1 } : null
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 300));
     }
 
-    if (failCount === 0) {
+    // ปิด modal
+    setDownloadProgress(null);
+
+    // แสดงผลลัพธ์
+    if (downloadProgress?.cancelled) {
+      setToast({
+        message: `ยกเลิกการดาวน์โหลด • สำเร็จ ${successCount} ไฟล์`,
+        type: 'info'
+      });
+    } else if (failCount === 0) {
       setToast({
         message: `ดาวน์โหลดสำเร็จ ${successCount} ไฟล์`,
         type: 'success'
@@ -463,12 +484,15 @@ function App() {
             </button>
           </div>
           
-          <div className="max-w-4xl max-h-[80vh] w-full" onClick={(e) => e.stopPropagation()}>
-            <img
-              src={viewImage.url}
-              alt={viewImage.filename}
-              className="w-full h-full object-contain rounded-2xl"
-            />
+          <div className="flex flex-col items-center max-w-6xl w-full max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <div className="relative w-full flex items-center justify-center" style={{ maxHeight: 'calc(90vh - 100px)' }}>
+              <img
+                src={viewImage.url}
+                alt={viewImage.filename}
+                className="max-w-full max-h-full object-contain rounded-2xl"
+                style={{ maxHeight: 'calc(90vh - 100px)' }}
+              />
+            </div>
             <div className="mt-4 text-center space-y-2">
               <p className="text-white text-lg font-medium">{viewImage.uploader_name}</p>
               <p className="text-white/70 text-sm">
