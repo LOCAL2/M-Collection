@@ -897,7 +897,7 @@ function App() {
           <div className="flex items-center justify-between h-16">
             <div>
               <h1 className={`text-xl font-bold ${theme === 'dark' ? 'text-white' : 'text-black'}`}>
-                M-Onew Gallery
+                M or new Gallery
               </h1>
             </div>
 
