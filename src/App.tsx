@@ -37,7 +37,10 @@ function App() {
   const [images, setImages] = useState<Image[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('theme') as 'light' | 'dark' | null;
+    return saved || 'dark';
+  });
   const [userName, setUserName] = useState('');
   const [userId, setUserId] = useState('');
   const [showNamePrompt, setShowNamePrompt] = useState(false);
@@ -989,13 +992,18 @@ function App() {
   };
 
   return (
-    <div
-      className={`min-h-screen transition-all duration-500 ${
-        theme === 'dark'
-          ? 'bg-transparent'
-          : 'bg-gradient-to-br from-gray-50 via-white to-gray-100'
-      }`}
-    >
+    <div className="min-h-screen transition-all duration-500 bg-transparent">
+      {/* Grid Background */}
+      <div 
+        className="fixed inset-0 pointer-events-none -z-10"
+        style={{
+          backgroundColor: theme === 'light' ? '#f0f4f8' : '#0f172a',
+          backgroundImage: theme === 'light' 
+            ? 'linear-gradient(rgba(148, 163, 184, 0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.5) 1px, transparent 1px)'
+            : 'linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px)',
+          backgroundSize: '25px 25px',
+        }}
+      />
       {/* Glassmorphism Background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div

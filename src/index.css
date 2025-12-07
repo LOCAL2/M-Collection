@@ -40,14 +40,20 @@ html, body {
   -webkit-scroll-snap-type: none;
 }
 
-/* Grid Pattern Background */
-body {
-  background-color: #0f172a;
-  background-image: 
-    linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px);
-  background-size: 20px 20px;
-  background-attachment: fixed;
+
+
+/* Scrollbar for Light Mode */
+:root[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
+
+:root[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-color: #e2e8f0;
+}
+
+:root[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }
 
 /* ให้ root element โปร่งใสเพื่อเห็น grid */
@@ -134,4 +140,9 @@ img {
 .gpu-accelerated {
   transform: translateZ(0);
   will-change: transform;
+}
+
+/* Body transparent to show html grid */
+body {
+  background: transparent !important;
 }
