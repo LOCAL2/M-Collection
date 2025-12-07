@@ -831,71 +831,100 @@ function App() {
       return;
     }
 
-    // เริ่มแสดง modal
-    downloadCancelledRef.current = false;
-    setDownloadProgress({ current: 0, total: images.length, cancelled: false });
+    setToast({
+      message: 'กำลังเตรียมไฟล์ ZIP...',
+      type: 'info'
+    });
 
-    let successCount = 0;
-    let failCount = 0;
+    try {
+      // Import JSZip dynamically
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
 
-    for (let i = 0; i < images.length; i++) {
-      // เช็คว่ายกเลิกหรือไม่
-      if (downloadCancelledRef.current) {
-        break;
+      // เริ่มแสดง modal
+      downloadCancelledRef.current = false;
+      setDownloadProgress({ current: 0, total: images.length, cancelled: false });
+
+      let successCount = 0;
+      let failCount = 0;
+
+      for (let i = 0; i < images.length; i++) {
+        // เช็คว่ายกเลิกหรือไม่
+        if (downloadCancelledRef.current) {
+          break;
+        }
+
+        const image = images[i];
+        
+        try {
+          const { data, error } = await supabase.storage
+            .from('gallery-images')
+            .download(image.storage_path);
+
+          if (error) throw error;
+
+          // เพิ่มไฟล์เข้า ZIP
+          zip.file(image.filename, data);
+          successCount++;
+        } catch (error) {
+          console.error(`Error downloading ${image.filename}:`, error);
+          failCount++;
+        }
+
+        // อัปเดตความคืบหน้า
+        setDownloadProgress(prev => 
+          prev ? { ...prev, current: i + 1 } : null
+        );
       }
 
-      const image = images[i];
-      
-      try {
-        const { data, error } = await supabase.storage
-          .from('gallery-images')
-          .download(image.storage_path);
+      const wasCancelled = downloadCancelledRef.current;
 
-        if (error) throw error;
+      if (!wasCancelled && successCount > 0) {
+        // สร้าง ZIP file
+        setToast({
+          message: 'กำลังสร้างไฟล์ ZIP...',
+          type: 'info'
+        });
 
-        const url = URL.createObjectURL(data);
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        
+        // ดาวน์โหลด ZIP file
+        const url = URL.createObjectURL(zipBlob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = image.filename;
+        a.download = `gallery-images-${new Date().toISOString().split('T')[0]}.zip`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-
-        successCount++;
-      } catch (error) {
-        console.error(`Error downloading ${image.filename}:`, error);
-        failCount++;
       }
 
-      // อัปเดตความคืบหน้า
-      setDownloadProgress(prev => 
-        prev ? { ...prev, current: i + 1 } : null
-      );
+      // ปิด modal
+      setDownloadProgress(null);
 
-      await new Promise(resolve => setTimeout(resolve, 300));
-    }
-
-    const wasCancelled = downloadCancelledRef.current;
-
-    // ปิด modal
-    setDownloadProgress(null);
-
-    // แสดงผลลัพธ์
-    if (wasCancelled) {
+      // แสดงผลลัพธ์
+      if (wasCancelled) {
+        setToast({
+          message: `ยกเลิกการดาวน์โหลด`,
+          type: 'info'
+        });
+      } else if (failCount === 0) {
+        setToast({
+          message: `ดาวน์โหลด ZIP สำเร็จ (${successCount} ไฟล์)`,
+          type: 'success'
+        });
+      } else {
+        setToast({
+          message: `ดาวน์โหลด ZIP สำเร็จ ${successCount} ไฟล์ • ล้มเหลว ${failCount} ไฟล์`,
+          type: 'info'
+        });
+      }
+    } catch (error) {
+      console.error('Error creating ZIP:', error);
+      setDownloadProgress(null);
       setToast({
-        message: `ยกเลิกการดาวน์โหลด • สำเร็จ ${successCount} ไฟล์`,
-        type: 'info'
-      });
-    } else if (failCount === 0) {
-      setToast({
-        message: `ดาวน์โหลดสำเร็จ ${successCount} ไฟล์`,
-        type: 'success'
-      });
-    } else {
-      setToast({
-        message: `ดาวน์โหลดสำเร็จ ${successCount} ไฟล์ • ล้มเหลว ${failCount} ไฟล์`,
-        type: 'info'
+        message: 'เกิดข้อผิดพลาดในการสร้าง ZIP',
+        type: 'error'
       });
     }
   };
