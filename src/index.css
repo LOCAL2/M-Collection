@@ -1,6 +1,67 @@
 @import "tailwindcss";
 @plugin "daisyui";
 
+/* Smooth scroll สำหรับทั้งหน้า - บังคับให้ smooth ที่สุด */
+html {
+  scroll-behavior: smooth !important;
+  overflow-y: scroll;
+  overflow-x: hidden;
+}
+
+body {
+  scroll-behavior: smooth !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: none;
+}
+
+/* Smooth scroll แบบ custom สำหรับทุก element */
+* {
+  scroll-behavior: smooth !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* เพิ่ม CSS สำหรับ smooth scrolling บน Windows */
+@media screen and (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth !important;
+  }
+}
+
+/* Force smooth scroll แม้ Windows ตั้ง Visual Effects เป็น Best Performance */
+html, body {
+  scroll-snap-type: none;
+  -ms-scroll-snap-type: none;
+  -webkit-scroll-snap-type: none;
+}
+
+/* ปรับ scrollbar ให้สวยงาม */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1e293b;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 10px;
+  border: 2px solid #1e293b;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 #1e293b;
+}
+
 @keyframes slide-up {
   from {
     transform: translateY(100%);

@@ -1,5 +1,34 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { supabase, type Image } from './lib/supabase';
+
+const ApiDocs = lazy(() => import('./pages/ApiDocs'));
+
+// ฟังก์ชัน smooth scroll ที่ทำงานได้ทุก browser
+const smoothScrollTo = (targetY: number) => {
+  const startY = window.scrollY;
+  const distance = targetY - startY;
+  const duration = 500; // milliseconds
+  let start: number | null = null;
+
+  const step = (timestamp: number) => {
+    if (!start) start = timestamp;
+    const progress = timestamp - start;
+    const percent = Math.min(progress / duration, 1);
+    
+    // Easing function (ease-in-out)
+    const ease = percent < 0.5
+      ? 4 * percent * percent * percent
+      : 1 - Math.pow(-2 * percent + 2, 3) / 2;
+    
+    window.scrollTo(0, startY + distance * ease);
+    
+    if (progress < duration) {
+      window.requestAnimationFrame(step);
+    }
+  };
+
+  window.requestAnimationFrame(step);
+};
 
 function App() {
   const [images, setImages] = useState<Image[]>([]);
@@ -7,6 +36,7 @@ function App() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [userName, setUserName] = useState('');
+  const [userId, setUserId] = useState('');
   const [showNamePrompt, setShowNamePrompt] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
@@ -24,6 +54,24 @@ function App() {
   const [downloadingImageId, setDownloadingImageId] = useState<string | number | null>(null);
   const [imageDownloadProgress, setImageDownloadProgress] = useState(0);
   const pendingFilesRef = useRef<FileList | null>(null);
+  const [pendingUploads, setPendingUploads] = useState<Array<{ name: string; size: number; type: string }>>([]);
+  const [showResumePrompt, setShowResumePrompt] = useState(false);
+  const [showReportPage, setShowReportPage] = useState(false);
+  const [selectedOriginal, setSelectedOriginal] = useState<Image | null>(null);
+  const [selectedDuplicate, setSelectedDuplicate] = useState<Image | null>(null);
+  const [reportReason, setReportReason] = useState<'duplicate' | 'inappropriate'>('duplicate');
+  const [showApiDocs, setShowApiDocs] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  
+  // ฟังก์ชันอัปเดต URL
+  const updateURL = (page: number) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('page', page.toString());
+    window.history.pushState({}, '', url.toString());
+    
+    // Scroll ไปด้านบนเมื่อเปลี่ยนหน้า (ใช้ custom smooth scroll)
+    smoothScrollTo(0);
+  };
 
   // ฟังก์ชันแปลงชื่อภาษาไทยเป็นภาษาอังกฤษ (transliteration)
   const transliterateThaiToEng = (text: string): string => {
@@ -53,6 +101,29 @@ function App() {
   useEffect(() => {
     const savedImagesPerPage = localStorage.getItem('imagesPerPage');
     if (savedImagesPerPage) setImagesPerPage(Number(savedImagesPerPage));
+
+    // อ่าน URL parameters
+    const params = new URLSearchParams(window.location.search);
+    const pageParam = params.get('page');
+    const reportParam = params.get('report');
+    
+    if (pageParam) {
+      const pageNum = parseInt(pageParam);
+      if (!isNaN(pageNum) && pageNum > 0) {
+        setCurrentPage(pageNum);
+      }
+    }
+
+    // เช็คว่าเปิดหน้า Report หรือไม่
+    if (reportParam === 'true') {
+      setShowReportPage(true);
+    }
+
+    // เช็คว่าเปิดหน้า API Docs หรือไม่
+    const apiParam = params.get('api');
+    if (apiParam === 'true') {
+      setShowApiDocs(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -60,8 +131,26 @@ function App() {
     if (savedTheme) setTheme(savedTheme);
 
     const savedName = localStorage.getItem('userName');
-    if (savedName) {
+    const savedUserId = localStorage.getItem('userId');
+    
+    if (savedName && savedUserId) {
       setUserName(savedName);
+      setUserId(savedUserId);
+      
+      // เช็คว่ามี pending uploads หรือไม่
+      const savedPendingUploads = localStorage.getItem('pendingUploads');
+      if (savedPendingUploads) {
+        try {
+          const uploads = JSON.parse(savedPendingUploads);
+          if (uploads.length > 0) {
+            setPendingUploads(uploads);
+            setShowResumePrompt(true);
+          }
+        } catch (e) {
+          console.error('Error parsing pending uploads:', e);
+          localStorage.removeItem('pendingUploads');
+        }
+      }
     } else {
       // ถ้ายังไม่มีชื่อ บังคับให้ใส่ชื่อทันที
       setShowNamePrompt(true);
@@ -91,6 +180,52 @@ function App() {
       return () => clearTimeout(timer);
     }
   }, [toast]);
+
+  // Handle paste event for uploading images from clipboard (Ctrl+V)
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      // ถ้ากำลัง focus อยู่ใน input/textarea ให้ข้าม
+      const activeElement = document.activeElement;
+      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        return;
+      }
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      const imageFiles: File[] = [];
+      
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            // สร้างชื่อไฟล์ใหม่ถ้าเป็น blob
+            const timestamp = Date.now();
+            const ext = item.type.split('/')[1] || 'png';
+            const newFile = new File([file], `pasted-image-${timestamp}.${ext}`, { type: item.type });
+            imageFiles.push(newFile);
+          }
+        }
+      }
+
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        // สร้าง FileList-like object
+        const dataTransfer = new DataTransfer();
+        imageFiles.forEach(file => dataTransfer.items.add(file));
+        handleUpload(dataTransfer.files);
+        
+        setToast({
+          message: `กำลังอัปโหลด ${imageFiles.length} รูปจาก clipboard...`,
+          type: 'info'
+        });
+      }
+    };
+
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [userName, uploading]);
 
   const fetchImages = async () => {
     const { data, error } = await supabase
@@ -136,7 +271,7 @@ function App() {
     };
   };
 
-  const handleUpload = async (files: FileList | null) => {
+  const handleUpload = async (files: FileList | null, resumeMode = false) => {
     // เช็คว่ามีไฟล์และไม่ใช่ค่าว่าง
     if (!files || files.length === 0) {
       console.log('No files selected');
@@ -171,93 +306,110 @@ function App() {
     setUploadProgress(0);
     setUploadCount({ current: 0, total: validFiles.length });
 
+    // บันทึก pending uploads ลง localStorage
+    if (!resumeMode) {
+      const pendingData = validFiles.map(f => ({ name: f.name, size: f.size, type: f.type }));
+      localStorage.setItem('pendingUploads', JSON.stringify(pendingData));
+    }
+
     try {
-      const newImages: Image[] = [];
-      const totalFiles = validFiles.length;
+      const safeUserName = transliterateThaiToEng(userName) || 'user';
+      let completedCount = 0;
       let skippedCount = 0;
+      const totalFiles = validFiles.length;
 
-      for (let i = 0; i < validFiles.length; i++) {
-        const file = validFiles[i];
-        console.log(`Processing file ${i + 1}/${totalFiles}: ${file.name}`);
+      // Upload แบบ parallel (3 ไฟล์พร้อมกัน)
+      const BATCH_SIZE = 3;
+      const newImages: Image[] = [];
+
+      for (let i = 0; i < validFiles.length; i += BATCH_SIZE) {
+        const batch = validFiles.slice(i, i + BATCH_SIZE);
         
-        // คำนวณ progress ตามจำนวนไฟล์
-        const baseProgress = Math.floor((i / totalFiles) * 90);
-        setUploadProgress(baseProgress);
-        setUploadCount({ current: i + 1, total: totalFiles });
+        const uploadPromises = batch.map(async (file) => {
+          try {
+            // เช็คว่ามีไฟล์ซ้ำใน database หรือไม่
+            const { data: existingImages } = await supabase
+              .from('images')
+              .select('id')
+              .eq('filename', file.name)
+              .eq('file_size', file.size)
+              .eq('mime_type', file.type)
+              .eq('uploader_name', userName)
+              .limit(1);
 
-        // เช็คว่ามีไฟล์ซ้ำใน database หรือไม่ (เช็คจาก filename, file_size, mime_type และ uploader)
-        const { data: existingImages } = await supabase
-          .from('images')
-          .select('*')
-          .eq('filename', file.name)
-          .eq('file_size', file.size)
-          .eq('mime_type', file.type)
-          .eq('uploader_name', userName);
+            if (existingImages && existingImages.length > 0) {
+              console.log(`Skipping duplicate: ${file.name}`);
+              return { success: true, skipped: true };
+            }
 
-        if (existingImages && existingImages.length > 0) {
-          console.log(`Duplicate file detected in database: ${file.name} (${file.size} bytes)`);
-          skippedCount++;
-          continue;
-        }
+            // สร้างชื่อไฟล์ที่ไม่ซ้ำ
+            const fileExt = file.name.split('.').pop();
+            const timestamp = Date.now();
+            const random = Math.random().toString(36).substring(2, 11);
+            const fileName = `${timestamp}-${random}.${fileExt}`;
+            const filePath = `${safeUserName}/${fileName}`;
 
-        // สร้างชื่อไฟล์ที่ไม่ซ้ำ และแปลงชื่อผู้ใช้เป็นภาษาอังกฤษ
-        const fileExt = file.name.split('.').pop();
-        const timestamp = Date.now();
-        const random = Math.random().toString(36).substring(2, 11);
-        const fileName = `${timestamp}-${random}.${fileExt}`;
-        // แปลงชื่อผู้ใช้เป็นภาษาอังกฤษ (ถ้าเป็นภาษาไทย)
-        const safeUserName = transliterateThaiToEng(userName) || 'user';
-        const filePath = `${safeUserName}/${fileName}`;
+            // Upload ไฟล์
+            const { error: uploadError } = await supabase.storage
+              .from('gallery-images')
+              .upload(filePath, file, {
+                cacheControl: '3600',
+                upsert: false
+              });
 
-        // Upload ไฟล์
-        const { error: uploadError } = await supabase.storage
-          .from('gallery-images')
-          .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
+            if (uploadError) {
+              if (uploadError.message.includes('already exists')) {
+                return { success: true, skipped: true };
+              }
+              throw uploadError;
+            }
 
-        if (uploadError) {
-          console.error('Upload error:', uploadError);
-          // ถ้า error เพราะไฟล์มีอยู่แล้ว ให้ข้ามไป
-          if (uploadError.message.includes('already exists')) {
-            console.log(`File already exists in storage: ${filePath}`);
-            skippedCount++;
-            continue;
+            // ดึง URL
+            const { data: urlData } = supabase.storage
+              .from('gallery-images')
+              .getPublicUrl(filePath);
+
+            // บันทึกข้อมูลลง database
+            const { data: insertedData, error: dbError } = await supabase
+              .from('images')
+              .insert({
+                filename: file.name,
+                storage_path: filePath,
+                url: urlData.publicUrl,
+                uploader_name: userName,
+                user_id: userId,
+                file_size: file.size,
+                mime_type: file.type,
+              })
+              .select()
+              .single();
+
+            if (dbError) throw dbError;
+
+            return { success: true, data: insertedData, skipped: false };
+          } catch (error) {
+            console.error(`Error uploading ${file.name}:`, error);
+            return { success: false, error, skipped: false };
           }
-          throw uploadError;
-        }
+        });
 
-        // ดึง URL
-        const { data: urlData } = supabase.storage
-          .from('gallery-images')
-          .getPublicUrl(filePath);
-
-        console.log('File uploaded, inserting to database...');
-
-        // บันทึกข้อมูลลง database
-        const { data: insertedData, error: dbError } = await supabase
-          .from('images')
-          .insert({
-            filename: file.name,
-            storage_path: filePath,
-            url: urlData.publicUrl,
-            uploader_name: userName,
-            file_size: file.size,
-            mime_type: file.type,
-          })
-          .select()
-          .single();
-
-        if (dbError) {
-          console.error('Database error:', dbError);
-          throw dbError;
-        }
+        const results = await Promise.all(uploadPromises);
         
-        if (insertedData) {
-          console.log('Image saved to database:', insertedData.id);
-          newImages.push(insertedData);
-        }
+        results.forEach(result => {
+          if (result.success) {
+            completedCount++;
+            if (result.skipped) {
+              skippedCount++;
+            } else if (result.data) {
+              newImages.push(result.data);
+            }
+          }
+        });
+
+        // อัปเดต progress
+        const progress = Math.floor((completedCount / totalFiles) * 100);
+        setUploadProgress(progress);
+        setUploadCount({ current: completedCount, total: totalFiles });
       }
 
       // เพิ่มรูปใหม่เข้า state ทันที
@@ -267,17 +419,19 @@ function App() {
 
       setUploadProgress(100);
       
+      // ลบ pending uploads ออกจาก localStorage
+      localStorage.removeItem('pendingUploads');
+      
       // แสดงผลลัพธ์
+      const uploadedCount = newImages.length;
       if (skippedCount > 0) {
-        console.log(`Upload completed: ${newImages.length} uploaded, ${skippedCount} skipped (duplicates)`);
         setToast({
-          message: `อัปโหลดสำเร็จ ${newImages.length} ไฟล์ • ข้าม ${skippedCount} ไฟล์ที่ซ้ำ`,
+          message: `อัปโหลดสำเร็จ ${uploadedCount} ไฟล์ • ข้าม ${skippedCount} ไฟล์ที่ซ้ำ`,
           type: 'info'
         });
       } else {
-        console.log(`Upload completed successfully: ${newImages.length} files uploaded`);
         setToast({
-          message: `อัปโหลดสำเร็จ ${newImages.length} ไฟล์`,
+          message: `อัปโหลดสำเร็จ ${uploadedCount} ไฟล์`,
           type: 'success'
         });
       }
@@ -301,9 +455,275 @@ function App() {
 
 
 
+  const getImagePosition = (imageId: string) => {
+    const index = images.findIndex(img => img.id === imageId);
+    if (index === -1) return { page: 0, position: 0, total: 0 };
+    
+    const position = index + 1;
+    const page = Math.ceil(position / imagesPerPage);
+    const positionInPage = ((index % imagesPerPage) + 1);
+    
+    return {
+      page,
+      position,
+      positionInPage,
+      total: images.length
+    };
+  };
+
+  const handleReportSubmit = async () => {
+    // ส่ง webhook แบบไม่รอ response (fire and forget)
+    setToast({
+      message: 'กำลังส่งรายงาน...',
+      type: 'info'
+    });
+
+    const sendReport = async () => {
+      try {
+        if (reportReason === 'duplicate' && selectedOriginal && selectedDuplicate) {
+          // รายงานรูปซ้ำ
+          const originalPos = getImagePosition(selectedOriginal.id);
+          const duplicatePos = getImagePosition(selectedDuplicate.id);
+
+          const reportData = {
+            embeds: [
+              // Embed 1: Header
+              {
+                title: '🔄 รายงานรูปซ้ำจากผู้ใช้',
+                description: `**ผู้แจ้ง:** ${userName}\n**วันที่:** ${new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}`,
+                color: 0xfeca57,
+                timestamp: new Date().toISOString(),
+                footer: {
+                  text: 'M or new Gallery - Duplicate Report System'
+                }
+              },
+              // Embed 2: รูปต้นฉบับ (ฝั่งซ้าย)
+              {
+                title: '✅ รูปต้นฉบับ (เก็บไว้)',
+                color: 0x22c55e,
+                fields: [
+                  {
+                    name: '📁 ชื่อไฟล์',
+                    value: `\`${selectedOriginal.filename}\``,
+                    inline: false
+                  },
+                  {
+                    name: '💾 ขนาด',
+                    value: `${(selectedOriginal.file_size! / 1024 / 1024).toFixed(2)} MB`,
+                    inline: true
+                  },
+                  {
+                    name: '📤 ผู้อัปโหลด',
+                    value: `**${selectedOriginal.uploader_name}**`,
+                    inline: true
+                  },
+                  {
+                    name: '📅 วันที่อัปโหลด',
+                    value: new Date(selectedOriginal.created_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }),
+                    inline: false
+                  },
+                  {
+                    name: '📍 ตำแหน่งในแกลเลอรี่',
+                    value: `หน้า **${originalPos.page}** | รูปที่ **${originalPos.position}**/**${originalPos.total}** | ลำดับในหน้า: **${originalPos.positionInPage}**`,
+                    inline: false
+                  },
+                  {
+                    name: '🆔 Image ID',
+                    value: `\`${selectedOriginal.id}\``,
+                    inline: false
+                  },
+                  {
+                    name: '🔗 URL',
+                    value: selectedOriginal.url,
+                    inline: false
+                  }
+                ],
+                image: {
+                  url: selectedOriginal.url
+                }
+              },
+              // Embed 3: รูปซ้ำ (ฝั่งขวา)
+              {
+                title: '❌ รูปซ้ำ (ควรลบ)',
+                color: 0xef4444,
+                fields: [
+                  {
+                    name: '📁 ชื่อไฟล์',
+                    value: `\`${selectedDuplicate.filename}\``,
+                    inline: false
+                  },
+                  {
+                    name: '💾 ขนาด',
+                    value: `${(selectedDuplicate.file_size! / 1024 / 1024).toFixed(2)} MB`,
+                    inline: true
+                  },
+                  {
+                    name: '📤 ผู้อัปโหลด',
+                    value: `**${selectedDuplicate.uploader_name}**`,
+                    inline: true
+                  },
+                  {
+                    name: '📅 วันที่อัปโหลด',
+                    value: new Date(selectedDuplicate.created_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }),
+                    inline: false
+                  },
+                  {
+                    name: '📍 ตำแหน่งในแกลเลอรี่',
+                    value: `หน้า **${duplicatePos.page}** | รูปที่ **${duplicatePos.position}**/**${duplicatePos.total}** | ลำดับในหน้า: **${duplicatePos.positionInPage}**`,
+                    inline: false
+                  },
+                  {
+                    name: '🆔 Image ID',
+                    value: `\`${selectedDuplicate.id}\``,
+                    inline: false
+                  },
+                  {
+                    name: '🔗 URL',
+                    value: selectedDuplicate.url,
+                    inline: false
+                  }
+                ],
+                image: {
+                  url: selectedDuplicate.url
+                }
+              },
+              // Embed 4: SQL Command
+              {
+                title: '💻 SQL Command สำหรับลบรูปซ้ำ',
+                description: `\`\`\`sql\n-- ลบรูปซ้ำ (ID: ${selectedDuplicate.id})\nDELETE FROM images WHERE id = '${selectedDuplicate.id}';\n\`\`\``,
+                color: 0x8b5cf6,
+                footer: {
+                  text: 'คัดลอก SQL command ด้านบนไปรันใน Supabase SQL Editor'
+                }
+              }
+            ]
+          };
+
+          // ส่งแบบไม่รอ response
+          fetch('https://discord.com/api/webhooks/1447052953956385002/6HvSIISCOk1GtW56_SIhu49AKVgZEVccoSKLjlKjclPjS_qZp63oVTHdSGqyj-WZF3fM', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(reportData),
+            keepalive: true
+          }).catch(err => console.error('Webhook error:', err));
+
+        } else if (reportReason === 'inappropriate' && selectedDuplicate) {
+          // รายงานรูปไม่เหมาะสม
+          const imagePos = getImagePosition(selectedDuplicate.id);
+
+          const reportData = {
+            embeds: [
+              // Embed 1: Header
+              {
+                title: '❌ รายงานรูปไม่เหมาะสมจากผู้ใช้',
+                description: `**ผู้แจ้ง:** ${userName}\n**วันที่:** ${new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}\n**เหตุผล:** รูปไม่เกี่ยวข้องกับเอ็มออนิว`,
+                color: 0xff6b6b,
+                timestamp: new Date().toISOString(),
+                footer: {
+                  text: 'M or new Gallery - Inappropriate Content Report'
+                }
+              },
+              // Embed 2: รูปที่ถูกรายงาน
+              {
+                title: '🚫 รูปที่ถูกรายงาน',
+                color: 0xef4444,
+                fields: [
+                  {
+                    name: '📁 ชื่อไฟล์',
+                    value: `\`${selectedDuplicate.filename}\``,
+                    inline: false
+                  },
+                  {
+                    name: '� ขน*าด',
+                    value: `${(selectedDuplicate.file_size! / 1024 / 1024).toFixed(2)} MB`,
+                    inline: true
+                  },
+                  {
+                    name: '📤 ผู้อัปโหลด',
+                    value: `**${selectedDuplicate.uploader_name}**`,
+                    inline: true
+                  },
+                  {
+                    name: '📅 วันที่อัปโหลด',
+                    value: new Date(selectedDuplicate.created_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }),
+                    inline: false
+                  },
+                  {
+                    name: '📍 ตำแหน่งในแกลเลอรี่',
+                    value: `หน้า **${imagePos.page}** | รูปที่ **${imagePos.position}**/**${imagePos.total}** | ลำดับในหน้า: **${imagePos.positionInPage}**`,
+                    inline: false
+                  },
+                  {
+                    name: '🆔 Image ID',
+                    value: `\`${selectedDuplicate.id}\``,
+                    inline: false
+                  },
+                  {
+                    name: '🔗 URL',
+                    value: selectedDuplicate.url,
+                    inline: false
+                  }
+                ],
+                image: {
+                  url: selectedDuplicate.url
+                }
+              },
+              // Embed 3: SQL Command
+              {
+                title: '💻 SQL Command สำหรับลบ',
+                description: `\`\`\`sql\n-- ลบรูปไม่เหมาะสม (ID: ${selectedDuplicate.id})\nDELETE FROM images WHERE id = '${selectedDuplicate.id}';\n\`\`\``,
+                color: 0x8b5cf6,
+                footer: {
+                  text: 'คัดลอก SQL command ด้านบนไปรันใน Supabase SQL Editor'
+                }
+              }
+            ]
+          };
+
+          // ส่งแบบไม่รอ response
+          fetch('https://discord.com/api/webhooks/1447052953956385002/6HvSIISCOk1GtW56_SIhu49AKVgZEVccoSKLjlKjclPjS_qZp63oVTHdSGqyj-WZF3fM', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(reportData),
+            keepalive: true
+          }).catch(err => console.error('Webhook error:', err));
+        }
+      } catch (error) {
+        console.error('Error preparing report:', error);
+      }
+    };
+
+    // ส่งแบบ async ไม่รอ
+    sendReport();
+
+    // แสดง success ทันที
+    setTimeout(() => {
+      setToast({
+        message: 'ส่งรายงานสำเร็จ ขอบคุณที่แจ้งให้ทราบ',
+        type: 'success'
+      });
+    }, 300);
+
+    // ปิด modal และ reset
+    setShowReportPage(false);
+    setSelectedOriginal(null);
+    setSelectedDuplicate(null);
+    setReportReason('duplicate');
+    
+    // ลบ report parameter ออกจาก URL
+    const url = new URL(window.location.href);
+    url.searchParams.delete('report');
+    window.history.pushState({}, '', url.toString());
+  };
+
   const handleNameSubmit = () => {
     if (userName.trim()) {
+      // สร้าง unique user ID (ใช้ timestamp + random)
+      const newUserId = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+      
       localStorage.setItem('userName', userName.trim());
+      localStorage.setItem('userId', newUserId);
+      setUserId(newUserId);
       setShowNamePrompt(false);
       
       // ถ้ามีไฟล์รออยู่ ให้ upload ทันที
@@ -711,6 +1131,7 @@ function App() {
                         setImagesPerPage(num);
                         localStorage.setItem('imagesPerPage', num.toString());
                         setCurrentPage(1);
+                        updateURL(1);
                       }}
                       className={`px-4 py-3 rounded-xl font-medium transition-all relative ${
                         imagesPerPage === num
@@ -870,6 +1291,444 @@ function App() {
         </div>
       )}
 
+      {/* API Docs Page */}
+      {showApiDocs && (
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-slate-950 flex items-center justify-center"><div className="text-white">Loading...</div></div>}>
+          <ApiDocs 
+            userName={userName}
+            userId={userId}
+            onClose={() => {
+              setShowApiDocs(false);
+              const url = new URL(window.location.href);
+              url.searchParams.delete('api');
+              window.history.pushState({}, '', url.toString());
+            }} 
+          />
+        </Suspense>
+      )}
+
+      {/* Report Page - Full Screen */}
+      {showReportPage && (
+        <div className="fixed inset-0 z-50 bg-slate-950 overflow-y-auto">
+          <div className="min-h-screen">
+            {/* Header */}
+            <div className="bg-slate-900 border-b border-slate-800 sticky top-0 z-10">
+              <div className="max-w-7xl mx-auto px-6 py-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h1 className="text-2xl font-bold text-white mb-1">Report System</h1>
+                    <p className="text-slate-400 text-sm">Select images to report inappropriate content or duplicates</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowReportPage(false);
+                      setSelectedOriginal(null);
+                      setSelectedDuplicate(null);
+                      setReportReason('duplicate');
+                      // ลบ report parameter ออกจาก URL
+                      const url = new URL(window.location.href);
+                      url.searchParams.delete('report');
+                      window.history.pushState({}, '', url.toString());
+                    }}
+                    className="px-5 py-2.5 rounded-lg bg-slate-800 text-white hover:bg-slate-700 transition-all cursor-pointer font-medium border border-slate-700"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="max-w-7xl mx-auto px-6 py-8">
+
+              {/* Report Type Selection */}
+              <div className="mb-8">
+                <h2 className="text-lg font-semibold text-white mb-4">Report Type</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <button
+                    onClick={() => {
+                      setReportReason('duplicate');
+                      setSelectedOriginal(null);
+                      setSelectedDuplicate(null);
+                    }}
+                    className={`p-6 rounded-xl text-left transition-all border-2 ${
+                      reportReason === 'duplicate'
+                        ? 'bg-orange-600 border-orange-500 text-white'
+                        : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                        reportReason === 'duplicate' ? 'bg-orange-700' : 'bg-slate-800'
+                      }`}>
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-lg font-bold">Duplicate Images</p>
+                        <p className="text-sm opacity-75">Report duplicate uploads</p>
+                      </div>
+                      {reportReason === 'duplicate' && (
+                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                    <p className="text-xs opacity-75">Select original image and duplicate to remove</p>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setReportReason('inappropriate');
+                      setSelectedOriginal(null);
+                      setSelectedDuplicate(null);
+                    }}
+                    className={`p-6 rounded-xl text-left transition-all border-2 ${
+                      reportReason === 'inappropriate'
+                        ? 'bg-red-600 border-red-500 text-white'
+                        : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                        reportReason === 'inappropriate' ? 'bg-red-700' : 'bg-slate-800'
+                      }`}>
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-lg font-bold">Inappropriate Content</p>
+                        <p className="text-sm opacity-75">Report inappropriate images</p>
+                      </div>
+                      {reportReason === 'inappropriate' && (
+                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                    <p className="text-xs opacity-75">Select image that violates content policy</p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Instructions */}
+              <div className="mb-8">
+                <div className="bg-blue-900/20 border border-blue-800/50 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <div className="flex-1">
+                      <p className="text-blue-300 text-sm font-medium mb-1">Instructions</p>
+                      <p className="text-blue-200/80 text-sm">
+                        {reportReason === 'duplicate' 
+                          ? 'Click to select the original image (green border), then select the duplicate (red border), and submit the report.'
+                          : 'Click to select the inappropriate image (red border) and submit the report.'
+                        }
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Selected Images Summary */}
+              {(selectedOriginal || selectedDuplicate) && (
+                <div className="mb-8">
+                  <h2 className="text-lg font-semibold text-white mb-4">Selected Images</h2>
+                  <div className="bg-slate-900 rounded-xl p-6 border border-slate-800">
+                    
+                    {reportReason === 'duplicate' ? (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Original Image */}
+                        <div className={`p-5 rounded-lg border-2 transition-all ${
+                          selectedOriginal 
+                            ? 'bg-green-900/20 border-green-600' 
+                            : 'bg-slate-800/50 border-slate-700 border-dashed'
+                        }`}>
+                          <div className="flex items-center gap-2 mb-4">
+                            <div className={`w-8 h-8 rounded flex items-center justify-center ${
+                              selectedOriginal ? 'bg-green-600' : 'bg-slate-700'
+                            }`}>
+                              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                            <span className="text-white font-semibold">Original (Keep)</span>
+                          </div>
+                          {selectedOriginal ? (
+                            <div>
+                              <img src={selectedOriginal.url} alt="" className="w-full h-40 object-cover rounded-lg mb-3" />
+                              <div className="space-y-2 text-sm">
+                                <p className="text-white truncate">{selectedOriginal.filename}</p>
+                                <p className="text-slate-400">By {selectedOriginal.uploader_name}</p>
+                                <p className="text-slate-500 text-xs">
+                                  {new Date(selectedOriginal.created_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => setSelectedOriginal(null)}
+                                className="w-full mt-3 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium transition-all cursor-pointer"
+                              >
+                                Remove Selection
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-center py-8">
+                              <svg className="w-12 h-12 mx-auto text-slate-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                              <p className="text-slate-400 text-sm">Click image below to select original</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Duplicate Image */}
+                        <div className={`p-5 rounded-lg border-2 transition-all ${
+                          selectedDuplicate 
+                            ? 'bg-red-900/20 border-red-600' 
+                            : 'bg-slate-800/50 border-slate-700 border-dashed'
+                        }`}>
+                          <div className="flex items-center gap-2 mb-4">
+                            <div className={`w-8 h-8 rounded flex items-center justify-center ${
+                              selectedDuplicate ? 'bg-red-600' : 'bg-slate-700'
+                            }`}>
+                              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </div>
+                            <span className="text-white font-semibold">Duplicate (Remove)</span>
+                          </div>
+                          {selectedDuplicate ? (
+                            <div>
+                              <img src={selectedDuplicate.url} alt="" className="w-full h-40 object-cover rounded-lg mb-3" />
+                              <div className="space-y-2 text-sm">
+                                <p className="text-white truncate">{selectedDuplicate.filename}</p>
+                                <p className="text-slate-400">By {selectedDuplicate.uploader_name}</p>
+                                <p className="text-slate-500 text-xs">
+                                  {new Date(selectedDuplicate.created_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => setSelectedDuplicate(null)}
+                                className="w-full mt-3 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium transition-all cursor-pointer"
+                              >
+                                Remove Selection
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-center py-8">
+                              <svg className="w-12 h-12 mx-auto text-slate-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                              <p className="text-slate-400 text-sm">Click image below to select duplicate</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      /* Inappropriate Content */
+                      <div className={`p-5 rounded-lg border-2 transition-all max-w-md mx-auto ${
+                        selectedDuplicate 
+                          ? 'bg-red-900/20 border-red-600' 
+                          : 'bg-slate-800/50 border-slate-700 border-dashed'
+                      }`}>
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className={`w-8 h-8 rounded flex items-center justify-center ${
+                            selectedDuplicate ? 'bg-red-600' : 'bg-slate-700'
+                          }`}>
+                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                          </div>
+                          <span className="text-white font-semibold">Inappropriate Content</span>
+                        </div>
+                        {selectedDuplicate ? (
+                          <div>
+                            <img src={selectedDuplicate.url} alt="" className="w-full h-48 object-cover rounded-lg mb-3" />
+                            <div className="space-y-2 text-sm">
+                              <p className="text-white truncate">{selectedDuplicate.filename}</p>
+                              <p className="text-slate-400">By {selectedDuplicate.uploader_name}</p>
+                              <p className="text-slate-500 text-xs">
+                                {new Date(selectedDuplicate.created_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => setSelectedDuplicate(null)}
+                              className="w-full mt-3 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium transition-all cursor-pointer"
+                            >
+                              Remove Selection
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-center py-8">
+                            <svg className="w-12 h-12 mx-auto text-slate-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <p className="text-slate-400 text-sm">Click image below to select</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Submit Button */}
+                    <button
+                      onClick={handleReportSubmit}
+                      disabled={reportReason === 'duplicate' ? !selectedOriginal || !selectedDuplicate : !selectedDuplicate}
+                      className={`w-full mt-6 px-6 py-3.5 rounded-lg font-semibold transition-all ${
+                        (reportReason === 'duplicate' ? selectedOriginal && selectedDuplicate : selectedDuplicate)
+                          ? reportReason === 'duplicate'
+                            ? 'bg-orange-600 hover:bg-orange-700 text-white cursor-pointer'
+                            : 'bg-red-600 hover:bg-red-700 text-white cursor-pointer'
+                          : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                      }`}
+                    >
+                      {(reportReason === 'duplicate' ? selectedOriginal && selectedDuplicate : selectedDuplicate) ? (
+                        'Submit Report to Discord'
+                      ) : (
+                        'Select images to continue'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Image Grid */}
+              <div className="mb-8">
+                <h2 className="text-lg font-semibold text-white mb-4">All Images</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                  {images.map((image, index) => {
+                    const globalIndex = index + 1;
+                    const page = Math.ceil(globalIndex / imagesPerPage);
+                    const positionInPage = ((index % imagesPerPage) + 1);
+                    const isOriginal = selectedOriginal?.id === image.id;
+                    const isDuplicate = selectedDuplicate?.id === image.id;
+                    
+                    return (
+                      <div
+                        key={image.id}
+                        onClick={() => {
+                          if (reportReason === 'duplicate') {
+                            if (!selectedOriginal) {
+                              setSelectedOriginal(image);
+                            } else if (!selectedDuplicate && image.id !== selectedOriginal.id) {
+                              setSelectedDuplicate(image);
+                            } else if (isOriginal) {
+                              setSelectedOriginal(null);
+                            } else if (isDuplicate) {
+                              setSelectedDuplicate(null);
+                            }
+                          } else {
+                            setSelectedDuplicate(isDuplicate ? null : image);
+                          }
+                        }}
+                        className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer transition-all border-2 ${
+                          isOriginal 
+                            ? 'border-green-500 scale-95' 
+                            : isDuplicate 
+                            ? 'border-red-500 scale-95'
+                            : 'border-transparent hover:border-slate-600'
+                        }`}
+                      >
+                        <img
+                          src={image.url}
+                          alt={image.filename}
+                          className="w-full h-full object-cover"
+                        />
+                        
+                        {/* Badge */}
+                        {isOriginal && (
+                          <div className="absolute top-2 left-2 bg-green-600 text-white px-2 py-1 rounded text-[10px] font-bold">
+                            ORIGINAL
+                          </div>
+                        )}
+                        {isDuplicate && (
+                          <div className="absolute top-2 left-2 bg-red-600 text-white px-2 py-1 rounded text-[10px] font-bold">
+                            {reportReason === 'duplicate' ? 'DUPLICATE' : 'FLAGGED'}
+                          </div>
+                        )}
+                        
+                        {/* Info Overlay */}
+                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                          <p className="text-white text-[10px] font-medium truncate">{image.uploader_name}</p>
+                          <p className="text-white/60 text-[9px]">
+                            Page {page} • #{globalIndex} • Pos {positionInPage}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Resume Upload Modal */}
+      {showResumePrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div
+            className={`w-full max-w-md p-8 rounded-3xl border backdrop-blur-xl ${
+              theme === 'dark'
+                ? 'bg-gray-900/80 border-gray-700'
+                : 'bg-white/80 border-gray-200'
+            }`}
+          >
+            <h3 className={`text-2xl font-bold mb-2 ${theme === 'dark' ? 'text-white' : 'text-black'}`}>
+              พบการอัปโหลดที่ค้างไว้ 📤
+            </h3>
+            <p className={`text-sm mb-4 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+              มีไฟล์ {pendingUploads.length} ไฟล์ที่ยังไม่ได้อัปโหลด คุณต้องการอัปโหลดต่อหรือไม่?
+            </p>
+            <div className={`mb-6 p-4 rounded-xl max-h-40 overflow-y-auto ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
+              {pendingUploads.slice(0, 5).map((file, idx) => (
+                <div key={idx} className={`text-sm py-1 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                  • {file.name}
+                </div>
+              ))}
+              {pendingUploads.length > 5 && (
+                <div className={`text-sm py-1 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-500'}`}>
+                  และอีก {pendingUploads.length - 5} ไฟล์...
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowResumePrompt(false);
+                  localStorage.removeItem('pendingUploads');
+                  setPendingUploads([]);
+                }}
+                className={`flex-1 px-6 py-3 rounded-xl font-medium transition-all cursor-pointer ${
+                  theme === 'dark'
+                    ? 'bg-gray-800 text-white hover:bg-gray-700'
+                    : 'bg-gray-200 text-black hover:bg-gray-300'
+                }`}
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={() => {
+                  setShowResumePrompt(false);
+                  setToast({
+                    message: 'กรุณาเลือกไฟล์เดิมอีกครั้งเพื่ออัปโหลดต่อ',
+                    type: 'info'
+                  });
+                }}
+                className={`flex-1 px-6 py-3 rounded-xl font-medium transition-all cursor-pointer ${
+                  theme === 'dark'
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'bg-blue-500 text-white hover:bg-blue-600'
+                }`}
+              >
+                อัปโหลดต่อ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Name Prompt Modal */}
       {showNamePrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -965,7 +1824,8 @@ function App() {
               </h1>
             </div>
 
-            <div className="flex items-center gap-3">
+            {/* Desktop Menu */}
+            <div className="hidden md:flex items-center gap-3">
               {userName && (
                 <span
                   className={`px-4 py-2 rounded-xl text-sm font-medium ${
@@ -974,6 +1834,61 @@ function App() {
                 >
                   ชื่อผู้ใช้ {userName}
                 </span>
+              )}
+              <button
+                onClick={() => {
+                  setShowApiDocs(true);
+                  const url = new URL(window.location.href);
+                  url.searchParams.set('api', 'true');
+                  window.history.pushState({}, '', url.toString());
+                }}
+                className={`px-4 py-2 rounded-xl transition-all cursor-pointer font-medium ${
+                  theme === 'dark'
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'bg-blue-500 text-white hover:bg-blue-600'
+                }`}
+              >
+                API
+              </button>
+              <button
+                onClick={() => {
+                  setShowReportPage(true);
+                  const url = new URL(window.location.href);
+                  url.searchParams.set('report', 'true');
+                  window.history.pushState({}, '', url.toString());
+                }}
+                className={`px-4 py-2 rounded-xl transition-all cursor-pointer font-medium ${
+                  theme === 'dark'
+                    ? 'bg-orange-600 text-white hover:bg-orange-700'
+                    : 'bg-orange-500 text-white hover:bg-orange-600'
+                }`}
+              >
+                ⚠️ รายงาน
+              </button>
+              
+              {/* Admin button - ซ่อนไว้ */}
+              {userName === 'admin' && (
+                <button
+                  onClick={async () => {
+                    setToast({ message: 'กำลังตรวจสอบรูปซ้ำ...', type: 'info' });
+                    try {
+                      const { detectAndReportDuplicates } = await import('./lib/duplicateDetector');
+                      await detectAndReportDuplicates();
+                      setToast({ message: 'ส่งรายงานรูปซ้ำไปยัง Discord แล้ว (Admin)', type: 'success' });
+                    } catch (error) {
+                      console.error('Error checking duplicates:', error);
+                      setToast({ message: 'เกิดข้อผิดพลาดในการตรวจสอบรูปซ้ำ', type: 'error' });
+                    }
+                  }}
+                  className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    theme === 'dark'
+                      ? 'bg-purple-600 text-white hover:bg-purple-700'
+                      : 'bg-purple-500 text-white hover:bg-purple-600'
+                  }`}
+                  title="ตรวจสอบรูปซ้ำ (Admin)"
+                >
+                  🔍
+                </button>
               )}
               <button
                 onClick={() => setShowSettings(true)}
@@ -1000,7 +1915,101 @@ function App() {
                 {theme === 'light' ? '🌙' : '☀️'}
               </button>
             </div>
+
+            {/* Mobile Hamburger Button */}
+            <div className="flex md:hidden items-center gap-2">
+              <button
+                onClick={() => {
+                  const newTheme = theme === 'light' ? 'dark' : 'light';
+                  setTheme(newTheme);
+                  localStorage.setItem('theme', newTheme);
+                }}
+                className={`p-2 rounded-xl transition-all cursor-pointer ${
+                  theme === 'dark'
+                    ? 'bg-gray-800 text-white hover:bg-gray-700'
+                    : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+                }`}
+              >
+                {theme === 'light' ? '🌙' : '☀️'}
+              </button>
+              <button
+                onClick={() => setShowMobileMenu(!showMobileMenu)}
+                className={`p-2 rounded-xl transition-all cursor-pointer ${
+                  theme === 'dark'
+                    ? 'bg-gray-800 text-white hover:bg-gray-700'
+                    : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+                }`}
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {showMobileMenu ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  )}
+                </svg>
+              </button>
+            </div>
           </div>
+
+          {/* Mobile Menu Dropdown */}
+          {showMobileMenu && (
+            <div className={`md:hidden border-t ${theme === 'dark' ? 'border-gray-800' : 'border-gray-200'}`}>
+              <div className="px-4 py-3 space-y-2">
+                {userName && (
+                  <div className={`px-4 py-2 rounded-xl text-sm font-medium ${
+                    theme === 'dark' ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    ชื่อผู้ใช้ {userName}
+                  </div>
+                )}
+                <button
+                  onClick={() => {
+                    setShowApiDocs(true);
+                    setShowMobileMenu(false);
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('api', 'true');
+                    window.history.pushState({}, '', url.toString());
+                  }}
+                  className={`w-full px-4 py-3 rounded-xl transition-all cursor-pointer font-medium text-left ${
+                    theme === 'dark'
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-blue-500 text-white hover:bg-blue-600'
+                  }`}
+                >
+                  📚 API Documentation
+                </button>
+                <button
+                  onClick={() => {
+                    setShowReportPage(true);
+                    setShowMobileMenu(false);
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('report', 'true');
+                    window.history.pushState({}, '', url.toString());
+                  }}
+                  className={`w-full px-4 py-3 rounded-xl transition-all cursor-pointer font-medium text-left ${
+                    theme === 'dark'
+                      ? 'bg-orange-600 text-white hover:bg-orange-700'
+                      : 'bg-orange-500 text-white hover:bg-orange-600'
+                  }`}
+                >
+                  ⚠️ รายงานรูปซ้ำ/ไม่เหมาะสม
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSettings(true);
+                    setShowMobileMenu(false);
+                  }}
+                  className={`w-full px-4 py-3 rounded-xl transition-all cursor-pointer font-medium text-left ${
+                    theme === 'dark'
+                      ? 'bg-gray-800 text-white hover:bg-gray-700'
+                      : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+                  }`}
+                >
+                  ⚙️ ตั้งค่า
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
@@ -1084,11 +2093,19 @@ function App() {
                     <p className={`text-base ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
                       คลิกหรือลากไฟล์มาวางที่นี่
                     </p>
-                    <div className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs ${theme === 'dark' ? 'bg-yellow-900/20 text-yellow-300 border border-yellow-700/30' : 'bg-yellow-100 text-yellow-800 border border-yellow-300'}`}>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      <span>รูปที่ไม่เกี่ยวข้องกับเอ็มออนิวจะถูกลบภายใน 1-3 วัน</span>
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <div className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs ${theme === 'dark' ? 'bg-blue-900/20 text-blue-300 border border-blue-700/30' : 'bg-blue-100 text-blue-800 border border-blue-300'}`}>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                        </svg>
+                        <span>รองรับ Copy-Paste รูปภาพ (Ctrl+V)</span>
+                      </div>
+                      <div className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs ${theme === 'dark' ? 'bg-yellow-900/20 text-yellow-300 border border-yellow-700/30' : 'bg-yellow-100 text-yellow-800 border border-yellow-300'}`}>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <span>รูปที่ไม่เกี่ยวข้องกับเอ็มออนิวจะถูกลบภายใน 1-3 ชั่วโมง</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1099,10 +2116,10 @@ function App() {
 
         {/* Gallery */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div className="flex items-center gap-4">
               <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-black'}`}>
-                Gallery
+                คอลเล็กชันพรี่เอ็ม ออนิว
               </h2>
               <span
                 className={`px-4 py-2 rounded-xl text-sm font-medium ${
@@ -1231,8 +2248,10 @@ function App() {
                           </svg>
                         </button>
 
-                        {/* Delete button - แสดงเฉพาะรูปของตนเอง */}
-                        {image.uploader_name === userName && (
+
+
+                        {/* Delete button - แสดงเฉพาะรูปของตนเอง (เช็คจาก user_id) */}
+                        {image.user_id === userId && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1329,7 +2348,11 @@ function App() {
                           ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
                           : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                       } ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                      onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                      onClick={() => {
+                        const newPage = Math.max(currentPage - 1, 1);
+                        setCurrentPage(newPage);
+                        updateURL(newPage);
+                      }}
                       disabled={currentPage === 1}
                     >
                       «
@@ -1353,11 +2376,11 @@ function App() {
                           ? 'opacity-50 cursor-not-allowed'
                           : 'cursor-pointer'
                       }`}
-                      onClick={() =>
-                        setCurrentPage((prev) =>
-                          Math.min(prev + 1, Math.ceil(images.length / imagesPerPage))
-                        )
-                      }
+                      onClick={() => {
+                        const newPage = Math.min(currentPage + 1, Math.ceil(images.length / imagesPerPage));
+                        setCurrentPage(newPage);
+                        updateURL(newPage);
+                      }}
                       disabled={currentPage === Math.ceil(images.length / imagesPerPage)}
                     >
                       »

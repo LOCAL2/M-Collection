@@ -26,6 +26,7 @@ export interface Image {
   url: string;
   uploader_id: string | null;
   uploader_name: string | null;
+  user_id: string | null;
   file_size: number | null;
   mime_type: string | null;
   width: number | null;
