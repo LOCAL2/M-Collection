@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase, type Image } from './lib/supabase';
 import { compressImage } from './lib/imageOptimizer';
 import LazyImage from './components/LazyImage';
@@ -62,13 +63,17 @@ function App() {
   const pendingFilesRef = useRef<FileList | null>(null);
   const [pendingUploads, setPendingUploads] = useState<Array<{ name: string; size: number; type: string }>>([]);
   const [showResumePrompt, setShowResumePrompt] = useState(false);
-  const [showReportPage, setShowReportPage] = useState(false);
   const [selectedOriginal, setSelectedOriginal] = useState<Image | null>(null);
   const [selectedDuplicate, setSelectedDuplicate] = useState<Image | null>(null);
   const [reportReason, setReportReason] = useState<'duplicate' | 'inappropriate'>('duplicate');
-  const [showApiDocs, setShowApiDocs] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [showRealFakeGuide, setShowRealFakeGuide] = useState(false);
+  
+  // ใช้ React Router แทน state
+  const location = useLocation();
+  const navigate = useNavigate();
+  const showApiDocs = location.pathname === '/api';
+  const showReportPage = location.pathname === '/report';
+  const showRealFakeGuide = location.pathname === '/guide';
   
   // ฟังก์ชันอัปเดต URL
   const updateURL = (page: number) => {
@@ -109,27 +114,15 @@ function App() {
     const savedImagesPerPage = localStorage.getItem('imagesPerPage');
     if (savedImagesPerPage) setImagesPerPage(Number(savedImagesPerPage));
 
-    // อ่าน URL parameters
+    // อ่าน page จาก URL
     const params = new URLSearchParams(window.location.search);
     const pageParam = params.get('page');
-    const reportParam = params.get('report');
     
     if (pageParam) {
       const pageNum = parseInt(pageParam);
       if (!isNaN(pageNum) && pageNum > 0) {
         setCurrentPage(pageNum);
       }
-    }
-
-    // เช็คว่าเปิดหน้า Report หรือไม่
-    if (reportParam === 'true') {
-      setShowReportPage(true);
-    }
-
-    // เช็คว่าเปิดหน้า API Docs หรือไม่
-    const apiParam = params.get('api');
-    if (apiParam === 'true') {
-      setShowApiDocs(true);
     }
   }, []);
 
@@ -732,15 +725,10 @@ function App() {
     }, 300);
 
     // ปิด modal และ reset
-    setShowReportPage(false);
     setSelectedOriginal(null);
     setSelectedDuplicate(null);
     setReportReason('duplicate');
-    
-    // ลบ report parameter ออกจาก URL
-    const url = new URL(window.location.href);
-    url.searchParams.delete('report');
-    window.history.pushState({}, '', url.toString());
+    navigate('/');
   };
 
   const handleNameSubmit = () => {
@@ -1358,12 +1346,8 @@ function App() {
           <ApiDocs 
             userName={userName}
             userId={userId}
-            onClose={() => {
-              setShowApiDocs(false);
-              const url = new URL(window.location.href);
-              url.searchParams.delete('api');
-              window.history.pushState({}, '', url.toString());
-            }} 
+            theme={theme}
+            onClose={() => navigate('/')} 
           />
         </Suspense>
       )}
@@ -1372,19 +1356,24 @@ function App() {
       {showRealFakeGuide && (
         <Suspense fallback={<div className="fixed inset-0 z-50 bg-slate-950 flex items-center justify-center"><div className="text-white">Loading...</div></div>}>
           <RealFakeGuide 
-            onClose={() => {
-              setShowRealFakeGuide(false);
-              const url = new URL(window.location.href);
-              url.searchParams.delete('guide');
-              window.history.pushState({}, '', url.toString());
-            }} 
+            theme={theme}
+            onClose={() => navigate('/')} 
           />
         </Suspense>
       )}
 
       {/* Report Page - Full Screen */}
       {showReportPage && (
-        <div className="fixed inset-0 z-50 overflow-y-auto" style={{ backgroundColor: '#0f172a', backgroundImage: 'linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
+        <div 
+          className="fixed inset-0 z-50 overflow-y-auto" 
+          style={{ 
+            backgroundColor: theme === 'light' ? '#f0f4f8' : '#0f172a', 
+            backgroundImage: theme === 'light'
+              ? 'linear-gradient(rgba(148, 163, 184, 0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.5) 1px, transparent 1px)'
+              : 'linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px)', 
+            backgroundSize: '25px 25px' 
+          }}
+        >
           <div className="min-h-screen">
             {/* Header */}
             <div className="bg-slate-900/90 backdrop-blur-sm border-b border-slate-800 sticky top-0 z-10">
@@ -1396,14 +1385,10 @@ function App() {
                   </div>
                   <button
                     onClick={() => {
-                      setShowReportPage(false);
                       setSelectedOriginal(null);
                       setSelectedDuplicate(null);
                       setReportReason('duplicate');
-                      // ลบ report parameter ออกจาก URL
-                      const url = new URL(window.location.href);
-                      url.searchParams.delete('report');
-                      window.history.pushState({}, '', url.toString());
+                      navigate('/');
                     }}
                     className="px-5 py-2.5 rounded-lg bg-slate-800 text-white hover:bg-slate-700 transition-all cursor-pointer font-medium border border-slate-700"
                   >
@@ -1912,12 +1897,7 @@ function App() {
                 </span>
               )}
               <button
-                onClick={() => {
-                  setShowApiDocs(true);
-                  const url = new URL(window.location.href);
-                  url.searchParams.set('api', 'true');
-                  window.history.pushState({}, '', url.toString());
-                }}
+                onClick={() => navigate('/api')}
                 className={`px-4 py-2 rounded-xl transition-all cursor-pointer font-medium ${
                   theme === 'dark'
                     ? 'bg-blue-600 text-white hover:bg-blue-700'
@@ -1927,12 +1907,7 @@ function App() {
                 API
               </button>
               <button
-                onClick={() => {
-                  setShowReportPage(true);
-                  const url = new URL(window.location.href);
-                  url.searchParams.set('report', 'true');
-                  window.history.pushState({}, '', url.toString());
-                }}
+                onClick={() => navigate('/report')}
                 className={`px-4 py-2 rounded-xl transition-all cursor-pointer font-medium ${
                   theme === 'dark'
                     ? 'bg-orange-600 text-white hover:bg-orange-700'
@@ -1942,12 +1917,7 @@ function App() {
                 ⚠️ รายงาน
               </button>
               <button
-                onClick={() => {
-                  setShowRealFakeGuide(true);
-                  const url = new URL(window.location.href);
-                  url.searchParams.set('guide', 'true');
-                  window.history.pushState({}, '', url.toString());
-                }}
+                onClick={() => navigate('/guide')}
                 className={`px-4 py-2 rounded-xl transition-all cursor-pointer font-medium ${
                   theme === 'dark'
                     ? 'bg-green-600 text-white hover:bg-green-700'
@@ -2055,11 +2025,8 @@ function App() {
                 )}
                 <button
                   onClick={() => {
-                    setShowApiDocs(true);
+                    navigate('/api');
                     setShowMobileMenu(false);
-                    const url = new URL(window.location.href);
-                    url.searchParams.set('api', 'true');
-                    window.history.pushState({}, '', url.toString());
                   }}
                   className={`w-full px-4 py-3 rounded-xl transition-all cursor-pointer font-medium text-left ${
                     theme === 'dark'
@@ -2071,11 +2038,8 @@ function App() {
                 </button>
                 <button
                   onClick={() => {
-                    setShowReportPage(true);
+                    navigate('/report');
                     setShowMobileMenu(false);
-                    const url = new URL(window.location.href);
-                    url.searchParams.set('report', 'true');
-                    window.history.pushState({}, '', url.toString());
                   }}
                   className={`w-full px-4 py-3 rounded-xl transition-all cursor-pointer font-medium text-left ${
                     theme === 'dark'
@@ -2087,11 +2051,8 @@ function App() {
                 </button>
                 <button
                   onClick={() => {
-                    setShowRealFakeGuide(true);
+                    navigate('/guide');
                     setShowMobileMenu(false);
-                    const url = new URL(window.location.href);
-                    url.searchParams.set('guide', 'true');
-                    window.history.pushState({}, '', url.toString());
                   }}
                   className={`w-full px-4 py-3 rounded-xl transition-all cursor-pointer font-medium text-left ${
                     theme === 'dark'

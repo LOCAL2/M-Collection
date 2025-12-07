@@ -1,10 +1,20 @@
 interface Props {
   onClose: () => void;
+  theme?: 'light' | 'dark';
 }
 
-export default function RealFakeGuide({ onClose }: Props) {
+export default function RealFakeGuide({ onClose, theme = 'dark' }: Props) {
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto" style={{ backgroundColor: '#0f172a', backgroundImage: 'linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
+    <div 
+      className="fixed inset-0 z-50 overflow-y-auto" 
+      style={{ 
+        backgroundColor: theme === 'light' ? '#f0f4f8' : '#0f172a', 
+        backgroundImage: theme === 'light'
+          ? 'linear-gradient(rgba(148, 163, 184, 0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.5) 1px, transparent 1px)'
+          : 'linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px)', 
+        backgroundSize: '25px 25px' 
+      }}
+    >
       <div className="min-h-screen">
         {/* Header */}
         <div className="bg-slate-900/90 backdrop-blur-sm border-b border-slate-800 sticky top-0 z-10">
