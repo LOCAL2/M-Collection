@@ -39,12 +39,14 @@ export default function RealFakeGuide({ onClose }: Props) {
             </p>
           </div>
 
-          {/* Image */}
+          {/* Image with lazy loading */}
           <div className="bg-slate-900 rounded-lg border border-slate-800 overflow-hidden shadow-2xl">
             <img 
               src="/real-fake.png" 
               alt="การสังเกตของแท้ - คู่มือเปรียบเทียบของแท้และของปลอม" 
               className="w-full h-auto"
+              loading="lazy"
+              decoding="async"
             />
           </div>
 

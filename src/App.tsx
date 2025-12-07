@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { supabase, type Image } from './lib/supabase';
+import { compressImage } from './lib/imageOptimizer';
+import LazyImage from './components/LazyImage';
 
 const ApiDocs = lazy(() => import('./pages/ApiDocs'));
 const RealFakeGuide = lazy(() => import('./pages/RealFakeGuide'));
@@ -159,15 +161,17 @@ function App() {
     }
 
     fetchImages();
-    subscribeToChanges();
+    const unsubscribe = subscribeToChanges();
 
-    // Polling ทุก 100ms เพื่อเช็ครูปใหม่
+    // Polling ทุก 30 วินาที (ลดจาก 100ms เพื่อประหยัด bandwidth)
+    // Realtime subscription จะจัดการ update แบบ real-time อยู่แล้ว
     const pollingInterval = setInterval(() => {
       fetchImages();
-    }, 100);
+    }, 30000);
 
     return () => {
       clearInterval(pollingInterval);
+      unsubscribe();
     };
   }, []);
 
@@ -315,17 +319,23 @@ function App() {
     }
 
     try {
+      // Compress รูปก่อน upload เพื่อให้เร็วขึ้น
+      setToast({ message: 'กำลังบีบอัดรูปภาพ...', type: 'info' });
+      const compressedFiles = await Promise.all(
+        validFiles.map(file => compressImage(file, 1920, 1920, 0.85))
+      );
+
       const safeUserName = transliterateThaiToEng(userName) || 'user';
       let completedCount = 0;
       let skippedCount = 0;
-      const totalFiles = validFiles.length;
+      const totalFiles = compressedFiles.length;
 
-      // Upload แบบ parallel (3 ไฟล์พร้อมกัน)
-      const BATCH_SIZE = 3;
+      // Upload แบบ parallel (5 ไฟล์พร้อมกัน - เพิ่มจาก 3)
+      const BATCH_SIZE = 5;
       const newImages: Image[] = [];
 
-      for (let i = 0; i < validFiles.length; i += BATCH_SIZE) {
-        const batch = validFiles.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < compressedFiles.length; i += BATCH_SIZE) {
+        const batch = compressedFiles.slice(i, i + BATCH_SIZE);
         
         const uploadPromises = batch.map(async (file) => {
           try {
@@ -2288,14 +2298,14 @@ function App() {
                           : 'bg-white/50 border-gray-200 hover:bg-white/70'
                       }`}
                     >
-                      <div 
+                      <div
                         className="aspect-square overflow-hidden cursor-pointer"
                         onClick={() => setViewImage(image)}
                       >
-                        <img
+                        <LazyImage
                           src={image.url}
                           alt={image.filename}
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                          className="w-full h-full transition-transform duration-500 group-hover:scale-110"
                         />
                       </div>
 

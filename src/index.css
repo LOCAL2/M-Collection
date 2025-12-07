@@ -76,3 +76,41 @@ html, body {
 .animate-slide-up {
   animation: slide-up 0.3s ease-out;
 }
+
+/* O
+ptimized skeleton loading animation */
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+}
+
+/* Image loading optimization */
+img {
+  content-visibility: auto;
+}
+
+/* Reduce layout shift */
+.aspect-square {
+  aspect-ratio: 1 / 1;
+}
+
+/* GPU acceleration for smooth animations */
+.gpu-accelerated {
+  transform: translateZ(0);
+  will-change: transform;
+}
