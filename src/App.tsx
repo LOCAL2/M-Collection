@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { supabase, type Image } from './lib/supabase';
 
 const ApiDocs = lazy(() => import('./pages/ApiDocs'));
+const RealFakeGuide = lazy(() => import('./pages/RealFakeGuide'));
 
 // ฟังก์ชัน smooth scroll ที่ทำงานได้ทุก browser
 const smoothScrollTo = (targetY: number) => {
@@ -62,6 +63,7 @@ function App() {
   const [reportReason, setReportReason] = useState<'duplicate' | 'inappropriate'>('duplicate');
   const [showApiDocs, setShowApiDocs] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [showRealFakeGuide, setShowRealFakeGuide] = useState(false);
   
   // ฟังก์ชันอัปเดต URL
   const updateURL = (page: number) => {
@@ -1336,6 +1338,20 @@ function App() {
         </Suspense>
       )}
 
+      {/* Real Fake Guide Page */}
+      {showRealFakeGuide && (
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-slate-950 flex items-center justify-center"><div className="text-white">Loading...</div></div>}>
+          <RealFakeGuide 
+            onClose={() => {
+              setShowRealFakeGuide(false);
+              const url = new URL(window.location.href);
+              url.searchParams.delete('guide');
+              window.history.pushState({}, '', url.toString());
+            }} 
+          />
+        </Suspense>
+      )}
+
       {/* Report Page - Full Screen */}
       {showReportPage && (
         <div className="fixed inset-0 z-50 bg-slate-950 overflow-y-auto">
@@ -1894,6 +1910,21 @@ function App() {
               >
                 ⚠️ รายงาน
               </button>
+              <button
+                onClick={() => {
+                  setShowRealFakeGuide(true);
+                  const url = new URL(window.location.href);
+                  url.searchParams.set('guide', 'true');
+                  window.history.pushState({}, '', url.toString());
+                }}
+                className={`px-4 py-2 rounded-xl transition-all cursor-pointer font-medium ${
+                  theme === 'dark'
+                    ? 'bg-green-600 text-white hover:bg-green-700'
+                    : 'bg-green-500 text-white hover:bg-green-600'
+                }`}
+              >
+                ✓ วิธีสังเกตของแท้
+              </button>
               
               {/* Admin button - ซ่อนไว้ */}
               {userName === 'admin' && (
@@ -2022,6 +2053,22 @@ function App() {
                   }`}
                 >
                   ⚠️ รายงานรูปซ้ำ/ไม่เหมาะสม
+                </button>
+                <button
+                  onClick={() => {
+                    setShowRealFakeGuide(true);
+                    setShowMobileMenu(false);
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('guide', 'true');
+                    window.history.pushState({}, '', url.toString());
+                  }}
+                  className={`w-full px-4 py-3 rounded-xl transition-all cursor-pointer font-medium text-left ${
+                    theme === 'dark'
+                      ? 'bg-green-600 text-white hover:bg-green-700'
+                      : 'bg-green-500 text-white hover:bg-green-600'
+                  }`}
+                >
+                  ✓ วิธีสังเกตของแท้
                 </button>
                 <button
                   onClick={() => {
