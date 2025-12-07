@@ -4,10 +4,10 @@ interface Props {
 
 export default function RealFakeGuide({ onClose }: Props) {
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950 overflow-y-auto overflow-x-hidden">
-      <div className="min-h-screen overflow-hidden">
+    <div className="fixed inset-0 z-50 overflow-y-auto" style={{ backgroundColor: '#0f172a', backgroundImage: 'linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
+      <div className="min-h-screen">
         {/* Header */}
-        <div className="bg-slate-900 border-b border-slate-800 sticky top-0 z-10">
+        <div className="bg-slate-900/90 backdrop-blur-sm border-b border-slate-800 sticky top-0 z-10">
           <div className="max-w-5xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
               <div>
@@ -26,6 +26,7 @@ export default function RealFakeGuide({ onClose }: Props) {
 
         {/* Content */}
         <div className="max-w-5xl mx-auto px-6 py-8">
+          <div className="bg-slate-900/95 backdrop-blur-sm rounded-2xl border border-slate-800 p-6">
           {/* Notice */}
           <div className="bg-blue-900/30 border border-blue-700/50 rounded-lg p-6 mb-8">
             <h3 className="text-blue-400 font-bold mb-3 flex items-center gap-2">
@@ -51,6 +52,7 @@ export default function RealFakeGuide({ onClose }: Props) {
           </div>
 
           <div className="text-center text-slate-500 text-sm py-8 border-t border-slate-800 mt-8">
+          </div>
           </div>
         </div>
       </div>

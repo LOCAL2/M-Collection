@@ -4,8 +4,14 @@
 /* Smooth scroll สำหรับทั้งหน้า - บังคับให้ smooth ที่สุด */
 html {
   scroll-behavior: smooth !important;
-  overflow-y: scroll;
   overflow-x: hidden;
+}
+
+/* ซ่อน scroll ของ html และ body เมื่อเปิด modal full-screen */
+html.modal-open,
+html.modal-open body {
+  overflow: hidden !important;
+  height: 100%;
 }
 
 body {
@@ -32,6 +38,21 @@ html, body {
   scroll-snap-type: none;
   -ms-scroll-snap-type: none;
   -webkit-scroll-snap-type: none;
+}
+
+/* Grid Pattern Background */
+body {
+  background-color: #0f172a;
+  background-image: 
+    linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px);
+  background-size: 20px 20px;
+  background-attachment: fixed;
+}
+
+/* ให้ root element โปร่งใสเพื่อเห็น grid */
+#root {
+  background: transparent;
 }
 
 /* ปรับ scrollbar ให้สวยงาม */

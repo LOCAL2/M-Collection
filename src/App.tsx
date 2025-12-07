@@ -180,6 +180,18 @@ function App() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
+  // ซ่อน scroll ของ body เมื่อเปิด modal full-screen
+  useEffect(() => {
+    if (showApiDocs || showReportPage || showRealFakeGuide) {
+      document.documentElement.classList.add('modal-open');
+    } else {
+      document.documentElement.classList.remove('modal-open');
+    }
+    return () => {
+      document.documentElement.classList.remove('modal-open');
+    };
+  }, [showApiDocs, showReportPage, showRealFakeGuide]);
+
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 4000);
@@ -980,7 +992,7 @@ function App() {
     <div
       className={`min-h-screen transition-all duration-500 ${
         theme === 'dark'
-          ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900'
+          ? 'bg-transparent'
           : 'bg-gradient-to-br from-gray-50 via-white to-gray-100'
       }`}
     >
@@ -1164,18 +1176,18 @@ function App() {
                 <p className={`text-xs mb-3 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-500'}`}>
                   ค่าเริ่มต้น: 12 รูป
                 </p>
-                <div className="grid grid-cols-3 gap-3">
-                  {[8, 12, 16, 20, 24, 32].map((num) => (
+                <div className="grid grid-cols-4 gap-3">
+                  {[8, 12, 16, 20, 24, 32, 48, -1].map((num) => (
                     <button
                       key={num}
                       onClick={() => {
-                        setImagesPerPage(num);
-                        localStorage.setItem('imagesPerPage', num.toString());
+                        setImagesPerPage(num === -1 ? 9999 : num);
+                        localStorage.setItem('imagesPerPage', (num === -1 ? 9999 : num).toString());
                         setCurrentPage(1);
                         updateURL(1);
                       }}
                       className={`px-4 py-3 rounded-xl font-medium transition-all relative ${
-                        imagesPerPage === num
+                        (num === -1 ? imagesPerPage === 9999 : imagesPerPage === num)
                           ? theme === 'dark'
                             ? 'bg-blue-600 text-white'
                             : 'bg-blue-500 text-white'
@@ -1184,7 +1196,7 @@ function App() {
                           : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                       }`}
                     >
-                      <span>{num}</span>
+                      <span>{num === -1 ? 'All' : num}</span>
                       {num === 12 && (
                         <span className="absolute -top-1 -right-1 px-1.5 py-0.5 text-[9px] font-bold bg-green-500 text-white rounded">
                           DEFAULT
@@ -1364,10 +1376,10 @@ function App() {
 
       {/* Report Page - Full Screen */}
       {showReportPage && (
-        <div className="fixed inset-0 z-50 bg-slate-950 overflow-y-auto">
+        <div className="fixed inset-0 z-50 overflow-y-auto" style={{ backgroundColor: '#0f172a', backgroundImage: 'linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
           <div className="min-h-screen">
             {/* Header */}
-            <div className="bg-slate-900 border-b border-slate-800 sticky top-0 z-10">
+            <div className="bg-slate-900/90 backdrop-blur-sm border-b border-slate-800 sticky top-0 z-10">
               <div className="max-w-7xl mx-auto px-6 py-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -1394,7 +1406,7 @@ function App() {
             </div>
 
             <div className="max-w-7xl mx-auto px-6 py-8">
-
+              <div className="bg-slate-900/95 backdrop-blur-sm rounded-2xl border border-slate-800 p-6">
               {/* Report Type Selection */}
               <div className="mb-8">
                 <h2 className="text-lg font-semibold text-white mb-4">Report Type</h2>
@@ -1714,6 +1726,7 @@ function App() {
                     );
                   })}
                 </div>
+              </div>
               </div>
             </div>
           </div>
@@ -2292,10 +2305,10 @@ function App() {
                   .map((image) => (
                     <div
                       key={image.id}
-                      className={`group relative rounded-2xl overflow-hidden border backdrop-blur-xl transition-all ${
+                      className={`group relative rounded-2xl overflow-hidden border-2 backdrop-blur-xl transition-all shadow-lg ${
                         theme === 'dark'
-                          ? 'bg-gray-900/50 border-gray-800 hover:bg-gray-900/70'
-                          : 'bg-white/50 border-gray-200 hover:bg-white/70'
+                          ? 'bg-gray-900/50 border-slate-600/50 hover:border-blue-500/50 hover:shadow-blue-500/20'
+                          : 'bg-white/50 border-gray-300 hover:border-blue-400 hover:shadow-blue-400/20'
                       }`}
                     >
                       <div
