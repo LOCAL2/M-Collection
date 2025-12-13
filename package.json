@@ -11,14 +11,18 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.86.2",
+    "@tabler/icons-react": "^3.35.0",
     "@tailwindcss/vite": "^4.1.17",
+    "clsx": "^2.1.1",
     "cors": "^2.8.5",
     "express": "^5.2.1",
     "jszip": "^3.10.1",
+    "motion": "^12.23.25",
     "multer": "^2.0.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.10.1",
+    "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.17",
     "ws": "^8.18.3"
   },

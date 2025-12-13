@@ -6,6 +6,9 @@ import LazyImage from './components/LazyImage';
 
 const ApiDocs = lazy(() => import('./pages/ApiDocs'));
 const RealFakeGuide = lazy(() => import('./pages/RealFakeGuide'));
+const MarqueePage = lazy(() => import('./pages/MarqueePage'));
+const DraggableCardPage = lazy(() => import('./pages/DraggableCardPage'));
+const MacbookScrollPage = lazy(() => import('./pages/MacbookScrollPage'));
 
 // ฟังก์ชัน smooth scroll ที่ทำงานได้ทุก browser
 const smoothScrollTo = (targetY: number) => {
@@ -74,6 +77,9 @@ function App() {
   const showApiDocs = location.pathname === '/api';
   const showReportPage = location.pathname === '/report';
   const showRealFakeGuide = location.pathname === '/guide';
+  const showMarquee = location.pathname === '/3d';
+  const showDraggableCard = location.pathname === '/cards';
+  const showMacbook = location.pathname === '/macbook';
   
   // ฟังก์ชันอัปเดต URL
   const updateURL = (page: number) => {
@@ -178,7 +184,7 @@ function App() {
 
   // ซ่อน scroll ของ body เมื่อเปิด modal full-screen
   useEffect(() => {
-    if (showApiDocs || showReportPage || showRealFakeGuide) {
+    if (showApiDocs || showReportPage || showRealFakeGuide || showMarquee || showDraggableCard || showMacbook) {
       document.documentElement.classList.add('modal-open');
     } else {
       document.documentElement.classList.remove('modal-open');
@@ -186,7 +192,7 @@ function App() {
     return () => {
       document.documentElement.classList.remove('modal-open');
     };
-  }, [showApiDocs, showReportPage, showRealFakeGuide]);
+  }, [showApiDocs, showReportPage, showRealFakeGuide, showMarquee, showDraggableCard, showMacbook]);
 
   useEffect(() => {
     if (toast) {
@@ -1012,13 +1018,14 @@ function App() {
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm cursor-pointer"
           onClick={() => setViewImage(null)}
         >
-          <div className="absolute top-4 right-4 flex gap-2">
+          {/* Buttons - z-10 เพื่อให้อยู่เหนือรูป */}
+          <div className="absolute top-4 right-4 flex gap-2 z-10">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 handleDownloadImage(viewImage);
               }}
-              className="w-12 h-12 rounded-full bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center transition-all backdrop-blur-sm cursor-pointer"
+              className="w-12 h-12 rounded-full bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center transition-all backdrop-blur-sm cursor-pointer shadow-lg"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -1026,7 +1033,7 @@ function App() {
             </button>
             <button
               onClick={() => setViewImage(null)}
-              className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all backdrop-blur-sm cursor-pointer"
+              className="w-12 h-12 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition-all backdrop-blur-sm cursor-pointer shadow-lg"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1034,13 +1041,14 @@ function App() {
             </button>
           </div>
           
-          <div className="flex flex-col items-center max-w-6xl w-full max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-            <div className="relative w-full flex items-center justify-center" style={{ maxHeight: 'calc(90vh - 100px)' }}>
+          {/* Image container - มี padding-top เพื่อไม่ให้ชนปุ่ม */}
+          <div className="flex flex-col items-center max-w-6xl w-full pt-16" onClick={(e) => e.stopPropagation()}>
+            <div className="relative w-full flex items-center justify-center" style={{ maxHeight: 'calc(90vh - 140px)' }}>
               <img
                 src={viewImage.url}
                 alt={viewImage.filename}
                 className="max-w-full max-h-full object-contain rounded-2xl"
-                style={{ maxHeight: 'calc(90vh - 100px)' }}
+                style={{ maxHeight: 'calc(90vh - 140px)' }}
               />
             </div>
             <div className="mt-4 text-center space-y-2">
@@ -1362,6 +1370,39 @@ function App() {
         </Suspense>
       )}
 
+      {/* 3D Marquee Page */}
+      {showMarquee && (
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-slate-950 flex items-center justify-center"><div className="text-white">Loading...</div></div>}>
+          <MarqueePage 
+            theme={theme}
+            images={images.slice(0, 32).map(img => img.url)}
+            onClose={() => navigate('/')} 
+          />
+        </Suspense>
+      )}
+
+      {/* Draggable Card Page */}
+      {showDraggableCard && (
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-slate-950 flex items-center justify-center"><div className="text-white">Loading...</div></div>}>
+          <DraggableCardPage 
+            theme={theme}
+            images={images.map(img => img.url)}
+            onClose={() => navigate('/')} 
+          />
+        </Suspense>
+      )}
+
+      {/* Macbook Scroll Page */}
+      {showMacbook && (
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-slate-950 flex items-center justify-center"><div className="text-white">Loading...</div></div>}>
+          <MacbookScrollPage 
+            theme={theme}
+            images={images.map(img => img.url)}
+            onClose={() => navigate('/')} 
+          />
+        </Suspense>
+      )}
+
       {/* Report Page - Full Screen */}
       {showReportPage && (
         <div 
@@ -1376,12 +1417,29 @@ function App() {
         >
           <div className="min-h-screen">
             {/* Header */}
-            <div className="bg-slate-900/90 backdrop-blur-sm border-b border-slate-800 sticky top-0 z-10">
-              <div className="max-w-7xl mx-auto px-6 py-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h1 className="text-2xl font-bold text-white mb-1">Report System</h1>
-                    <p className="text-slate-400 text-sm">Select images to report inappropriate content or duplicates</p>
+            <header className={`backdrop-blur-md border-b sticky top-0 z-10 ${
+              theme === 'light' 
+                ? 'bg-white/80 border-slate-200/50' 
+                : 'bg-slate-900/80 border-slate-700/50'
+            }`}>
+              <div className="max-w-7xl mx-auto px-4 sm:px-6">
+                <div className="flex items-center justify-between h-14">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                      theme === 'dark' ? 'bg-orange-500' : 'bg-orange-600'
+                    }`}>
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h1 className={`font-semibold ${theme === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                        Report
+                      </h1>
+                      <p className={`text-xs ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                        Report Issues
+                      </p>
+                    </div>
                   </div>
                   <button
                     onClick={() => {
@@ -1390,13 +1448,17 @@ function App() {
                       setReportReason('duplicate');
                       navigate('/');
                     }}
-                    className="px-5 py-2.5 rounded-lg bg-slate-800 text-white hover:bg-slate-700 transition-all cursor-pointer font-medium border border-slate-700"
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                      theme === 'light' 
+                        ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' 
+                        : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    }`}
                   >
                     Close
                   </button>
                 </div>
               </div>
-            </div>
+            </header>
 
             <div className="max-w-7xl mx-auto px-6 py-8">
               <div className="bg-slate-900/95 backdrop-blur-sm rounded-2xl border border-slate-800 p-6">
@@ -1871,63 +1933,101 @@ function App() {
 
       {/* Header */}
       <header
-        className={`sticky top-0 z-40 border-b backdrop-blur-xl transition-all ${
+        className={`sticky top-0 z-40 backdrop-blur-md transition-all ${
           theme === 'dark'
-            ? 'bg-gray-900/70 border-gray-800'
-            : 'bg-white/70 border-gray-200'
+            ? 'bg-slate-900/80 border-b border-slate-700/50'
+            : 'bg-white/80 border-b border-slate-200/50'
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div>
-              <h1 className={`text-xl font-bold ${theme === 'dark' ? 'text-white' : 'text-black'}`}>
-                M or new Gallery
-              </h1>
+          <div className="flex items-center justify-between h-14">
+            {/* Logo */}
+            <div className="flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                theme === 'dark' ? 'bg-indigo-500' : 'bg-indigo-600'
+              }`}>
+                <span className="text-white font-bold text-sm">M</span>
+              </div>
+              <span className={`font-semibold hidden sm:block ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                Gallery
+              </span>
             </div>
 
-            {/* Desktop Menu */}
-            <div className="hidden md:flex items-center gap-3">
-              {userName && (
-                <span
-                  className={`px-4 py-2 rounded-xl text-sm font-medium ${
-                    theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
-                  }`}
-                >
-                  ชื่อผู้ใช้ {userName}
-                </span>
-              )}
+            {/* Desktop Navigation */}
+            <nav className="hidden md:flex items-center gap-1">
+              <button
+                onClick={() => navigate('/3d')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                  theme === 'dark'
+                    ? 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                3D View
+              </button>
+              <button
+                onClick={() => navigate('/cards')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                  theme === 'dark'
+                    ? 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                Cards
+              </button>
+              <button
+                onClick={() => navigate('/macbook')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                  theme === 'dark'
+                    ? 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                Macbook
+              </button>
+              <button
+                onClick={() => navigate('/guide')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                  theme === 'dark'
+                    ? 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                Guide
+              </button>
+              <button
+                onClick={() => navigate('/report')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                  theme === 'dark'
+                    ? 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                Report
+              </button>
               <button
                 onClick={() => navigate('/api')}
-                className={`px-4 py-2 rounded-xl transition-all cursor-pointer font-medium ${
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
                   theme === 'dark'
-                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'bg-blue-500 text-white hover:bg-blue-600'
+                    ? 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
                 API
               </button>
-              <button
-                onClick={() => navigate('/report')}
-                className={`px-4 py-2 rounded-xl transition-all cursor-pointer font-medium ${
-                  theme === 'dark'
-                    ? 'bg-orange-600 text-white hover:bg-orange-700'
-                    : 'bg-orange-500 text-white hover:bg-orange-600'
-                }`}
-              >
-                ⚠️ รายงาน
-              </button>
-              <button
-                onClick={() => navigate('/guide')}
-                className={`px-4 py-2 rounded-xl transition-all cursor-pointer font-medium ${
-                  theme === 'dark'
-                    ? 'bg-green-600 text-white hover:bg-green-700'
-                    : 'bg-green-500 text-white hover:bg-green-600'
-                }`}
-              >
-                ✓ วิธีสังเกตของแท้
-              </button>
+            </nav>
+
+            {/* Right Actions */}
+            <div className="flex items-center gap-2">
+              {userName && (
+                <span className={`hidden lg:block px-3 py-1.5 text-xs font-medium rounded-full ${
+                  theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {userName}
+                </span>
+              )}
               
-              {/* Admin button - ซ่อนไว้ */}
+              {/* Admin button */}
               {userName === 'admin' && (
                 <button
                   onClick={async () => {
@@ -1935,73 +2035,72 @@ function App() {
                     try {
                       const { detectAndReportDuplicates } = await import('./lib/duplicateDetector');
                       await detectAndReportDuplicates();
-                      setToast({ message: 'ส่งรายงานรูปซ้ำไปยัง Discord แล้ว (Admin)', type: 'success' });
+                      setToast({ message: 'ส่งรายงานรูปซ้ำไปยัง Discord แล้ว', type: 'success' });
                     } catch (error) {
                       console.error('Error checking duplicates:', error);
                       setToast({ message: 'เกิดข้อผิดพลาดในการตรวจสอบรูปซ้ำ', type: 'error' });
                     }
                   }}
-                  className={`p-2 rounded-xl transition-all cursor-pointer ${
+                  className={`p-2 rounded-md transition-colors cursor-pointer ${
                     theme === 'dark'
-                      ? 'bg-purple-600 text-white hover:bg-purple-700'
-                      : 'bg-purple-500 text-white hover:bg-purple-600'
+                      ? 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
                   }`}
-                  title="ตรวจสอบรูปซ้ำ (Admin)"
+                  title="Scan Duplicates"
                 >
-                  🔍
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
                 </button>
               )}
+              
               <button
                 onClick={() => setShowSettings(true)}
-                className={`p-2 rounded-xl transition-all cursor-pointer ${
+                className={`p-2 rounded-md transition-colors cursor-pointer ${
                   theme === 'dark'
-                    ? 'bg-gray-800 text-white hover:bg-gray-700'
-                    : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+                    ? 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
-                ⚙️
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
               </button>
+              
               <button
                 onClick={() => {
                   const newTheme = theme === 'light' ? 'dark' : 'light';
                   setTheme(newTheme);
                   localStorage.setItem('theme', newTheme);
                 }}
-                className={`p-2 rounded-xl transition-all cursor-pointer ${
+                className={`p-2 rounded-md transition-colors cursor-pointer ${
                   theme === 'dark'
-                    ? 'bg-gray-800 text-white hover:bg-gray-700'
-                    : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+                    ? 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
-                {theme === 'light' ? '🌙' : '☀️'}
+                {theme === 'light' ? (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                )}
               </button>
-            </div>
 
-            {/* Mobile Hamburger Button */}
-            <div className="flex md:hidden items-center gap-2">
-              <button
-                onClick={() => {
-                  const newTheme = theme === 'light' ? 'dark' : 'light';
-                  setTheme(newTheme);
-                  localStorage.setItem('theme', newTheme);
-                }}
-                className={`p-2 rounded-xl transition-all cursor-pointer ${
-                  theme === 'dark'
-                    ? 'bg-gray-800 text-white hover:bg-gray-700'
-                    : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
-                }`}
-              >
-                {theme === 'light' ? '🌙' : '☀️'}
-              </button>
+              {/* Mobile Menu Button */}
               <button
                 onClick={() => setShowMobileMenu(!showMobileMenu)}
-                className={`p-2 rounded-xl transition-all cursor-pointer ${
+                className={`md:hidden p-2 rounded-md transition-colors cursor-pointer ${
                   theme === 'dark'
-                    ? 'bg-gray-800 text-white hover:bg-gray-700'
-                    : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+                    ? 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   {showMobileMenu ? (
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   ) : (
@@ -2012,68 +2111,87 @@ function App() {
             </div>
           </div>
 
-          {/* Mobile Menu Dropdown */}
+          {/* Mobile Menu */}
           {showMobileMenu && (
-            <div className={`md:hidden border-t ${theme === 'dark' ? 'border-gray-800' : 'border-gray-200'}`}>
-              <div className="px-4 py-3 space-y-2">
+            <div className={`md:hidden py-3 border-t ${theme === 'dark' ? 'border-slate-700/50' : 'border-slate-200/50'}`}>
+              <div className="flex flex-col gap-1">
                 {userName && (
-                  <div className={`px-4 py-2 rounded-xl text-sm font-medium ${
-                    theme === 'dark' ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-700'
+                  <div className={`px-3 py-2 text-xs font-medium ${
+                    theme === 'dark' ? 'text-slate-500' : 'text-slate-400'
                   }`}>
-                    ชื่อผู้ใช้ {userName}
+                    Signed in as {userName}
                   </div>
                 )}
                 <button
-                  onClick={() => {
-                    navigate('/api');
-                    setShowMobileMenu(false);
-                  }}
-                  className={`w-full px-4 py-3 rounded-xl transition-all cursor-pointer font-medium text-left ${
+                  onClick={() => { navigate('/3d'); setShowMobileMenu(false); }}
+                  className={`px-3 py-2.5 rounded-md text-sm font-medium text-left transition-colors cursor-pointer ${
                     theme === 'dark'
-                      ? 'bg-blue-600 text-white hover:bg-blue-700'
-                      : 'bg-blue-500 text-white hover:bg-blue-600'
+                      ? 'text-slate-300 hover:text-white hover:bg-slate-800'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  📚 API Documentation
+                  3D View
                 </button>
                 <button
-                  onClick={() => {
-                    navigate('/report');
-                    setShowMobileMenu(false);
-                  }}
-                  className={`w-full px-4 py-3 rounded-xl transition-all cursor-pointer font-medium text-left ${
+                  onClick={() => { navigate('/cards'); setShowMobileMenu(false); }}
+                  className={`px-3 py-2.5 rounded-md text-sm font-medium text-left transition-colors cursor-pointer ${
                     theme === 'dark'
-                      ? 'bg-orange-600 text-white hover:bg-orange-700'
-                      : 'bg-orange-500 text-white hover:bg-orange-600'
+                      ? 'text-slate-300 hover:text-white hover:bg-slate-800'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  ⚠️ รายงานรูปซ้ำ/ไม่เหมาะสม
+                  Cards
                 </button>
                 <button
-                  onClick={() => {
-                    navigate('/guide');
-                    setShowMobileMenu(false);
-                  }}
-                  className={`w-full px-4 py-3 rounded-xl transition-all cursor-pointer font-medium text-left ${
+                  onClick={() => { navigate('/macbook'); setShowMobileMenu(false); }}
+                  className={`px-3 py-2.5 rounded-md text-sm font-medium text-left transition-colors cursor-pointer ${
                     theme === 'dark'
-                      ? 'bg-green-600 text-white hover:bg-green-700'
-                      : 'bg-green-500 text-white hover:bg-green-600'
+                      ? 'text-slate-300 hover:text-white hover:bg-slate-800'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  ✓ วิธีสังเกตของแท้
+                  Macbook
                 </button>
                 <button
-                  onClick={() => {
-                    setShowSettings(true);
-                    setShowMobileMenu(false);
-                  }}
-                  className={`w-full px-4 py-3 rounded-xl transition-all cursor-pointer font-medium text-left ${
+                  onClick={() => { navigate('/guide'); setShowMobileMenu(false); }}
+                  className={`px-3 py-2.5 rounded-md text-sm font-medium text-left transition-colors cursor-pointer ${
                     theme === 'dark'
-                      ? 'bg-gray-800 text-white hover:bg-gray-700'
-                      : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+                      ? 'text-slate-300 hover:text-white hover:bg-slate-800'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  ⚙️ ตั้งค่า
+                  Guide
+                </button>
+                <button
+                  onClick={() => { navigate('/report'); setShowMobileMenu(false); }}
+                  className={`px-3 py-2.5 rounded-md text-sm font-medium text-left transition-colors cursor-pointer ${
+                    theme === 'dark'
+                      ? 'text-slate-300 hover:text-white hover:bg-slate-800'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  Report
+                </button>
+                <button
+                  onClick={() => { navigate('/api'); setShowMobileMenu(false); }}
+                  className={`px-3 py-2.5 rounded-md text-sm font-medium text-left transition-colors cursor-pointer ${
+                    theme === 'dark'
+                      ? 'text-slate-300 hover:text-white hover:bg-slate-800'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  API
+                </button>
+                <div className={`my-2 border-t ${theme === 'dark' ? 'border-slate-700/50' : 'border-slate-200/50'}`} />
+                <button
+                  onClick={() => { setShowSettings(true); setShowMobileMenu(false); }}
+                  className={`px-3 py-2.5 rounded-md text-sm font-medium text-left transition-colors cursor-pointer ${
+                    theme === 'dark'
+                      ? 'text-slate-300 hover:text-white hover:bg-slate-800'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  Settings
                 </button>
               </div>
             </div>
