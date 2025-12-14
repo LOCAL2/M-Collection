@@ -70,6 +70,9 @@ function App() {
   const [selectedDuplicate, setSelectedDuplicate] = useState<Image | null>(null);
   const [reportReason, setReportReason] = useState<'duplicate' | 'inappropriate'>('duplicate');
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [showDevPinPrompt, setShowDevPinPrompt] = useState(false);
+  const [devPin, setDevPin] = useState('');
+  const [pendingDevName, setPendingDevName] = useState('');
   
   // ใช้ React Router แทน state
   const location = useLocation();
@@ -737,27 +740,56 @@ function App() {
     navigate('/');
   };
 
+  const DEV_PIN = import.meta.env.VITE_DEV_PIN || '1234';
+
   const handleNameSubmit = () => {
     if (userName.trim()) {
-      // สร้าง unique user ID (ใช้ timestamp + random)
-      const newUserId = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
-      
-      localStorage.setItem('userName', userName.trim());
-      localStorage.setItem('userId', newUserId);
-      setUserId(newUserId);
-      setShowNamePrompt(false);
-      
-      // ถ้ามีไฟล์รออยู่ ให้ upload ทันที
-      if (pendingFilesRef.current) {
-        const files = pendingFilesRef.current;
-        pendingFilesRef.current = null;
-        // ใช้ setTimeout เพื่อให้ modal ปิดก่อน
-        setTimeout(() => {
-          handleUpload(files);
-        }, 100);
+      // ถ้าชื่อเป็น dev ต้องใส่ PIN ก่อน
+      if (userName.trim().toLowerCase() === 'dev') {
+        setPendingDevName(userName.trim());
+        setShowDevPinPrompt(true);
+        return;
       }
+      
+      completeNameSubmit(userName.trim());
     }
   };
+
+  const handleDevPinSubmit = () => {
+    if (devPin === DEV_PIN) {
+      completeNameSubmit(pendingDevName);
+      setShowDevPinPrompt(false);
+      setDevPin('');
+      setPendingDevName('');
+    } else {
+      setToast({ message: 'PIN ไม่ถูกต้อง', type: 'error' });
+      setDevPin('');
+    }
+  };
+
+  const completeNameSubmit = (name: string) => {
+    // สร้าง unique user ID (ใช้ timestamp + random)
+    const newUserId = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+    
+    localStorage.setItem('userName', name);
+    localStorage.setItem('userId', newUserId);
+    setUserName(name);
+    setUserId(newUserId);
+    setShowNamePrompt(false);
+    
+    // ถ้ามีไฟล์รออยู่ ให้ upload ทันที
+    if (pendingFilesRef.current) {
+      const files = pendingFilesRef.current;
+      pendingFilesRef.current = null;
+      // ใช้ setTimeout เพื่อให้ modal ปิดก่อน
+      setTimeout(() => {
+        handleUpload(files);
+      }, 100);
+    }
+  };
+
+  // เช็คว่าเป็น dev หรือไม่
+  const isDev = userName.toLowerCase() === 'dev';
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -1931,6 +1963,71 @@ function App() {
         </div>
       )}
 
+      {/* Dev PIN Prompt Modal */}
+      {showDevPinPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div
+            className={`w-full max-w-md p-8 rounded-3xl border backdrop-blur-xl ${
+              theme === 'dark'
+                ? 'bg-gray-900/80 border-gray-700'
+                : 'bg-white/80 border-gray-200'
+            }`}
+          >
+            <h3 className={`text-2xl font-bold mb-2 ${theme === 'dark' ? 'text-white' : 'text-black'}`}>
+              Developer Access 🔐
+            </h3>
+            <p className={`text-sm mb-4 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+              กรุณาใส่ PIN เพื่อยืนยันสิทธิ์ Developer
+            </p>
+            <input
+              type="password"
+              value={devPin}
+              onChange={(e) => setDevPin(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleDevPinSubmit()}
+              placeholder="PIN..."
+              autoFocus
+              maxLength={10}
+              className={`w-full px-4 py-3 rounded-xl border outline-none transition-all text-center text-2xl tracking-widest ${
+                theme === 'dark'
+                  ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500'
+                  : 'bg-white border-gray-300 text-black placeholder-gray-400'
+              }`}
+            />
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={handleDevPinSubmit}
+                disabled={!devPin.trim()}
+                className={`flex-1 px-6 py-3 rounded-xl font-medium transition-all ${
+                  !devPin.trim()
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'cursor-pointer'
+                } ${
+                  theme === 'dark'
+                    ? 'bg-orange-500 text-white hover:bg-orange-600'
+                    : 'bg-orange-500 text-white hover:bg-orange-600'
+                }`}
+              >
+                ยืนยัน
+              </button>
+              <button
+                onClick={() => {
+                  setShowDevPinPrompt(false);
+                  setDevPin('');
+                  setPendingDevName('');
+                }}
+                className={`px-6 py-3 rounded-xl font-medium transition-all cursor-pointer ${
+                  theme === 'dark'
+                    ? 'bg-gray-800 text-white hover:bg-gray-700'
+                    : 'bg-gray-200 text-black hover:bg-gray-300'
+                }`}
+              >
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header
         className={`sticky top-0 z-40 backdrop-blur-md transition-all ${
@@ -2436,14 +2533,19 @@ function App() {
 
 
 
-                        {/* Delete button - แสดงเฉพาะรูปของตนเอง (เช็คจาก user_id) */}
-                        {image.user_id === userId && (
+                        {/* Delete button - แสดงเฉพาะรูปของตนเอง หรือ dev ลบได้ทุกรูป */}
+                        {(image.user_id === userId || isDev) && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDeleteClick(image);
                             }}
-                            className="w-10 h-10 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-all shadow-lg cursor-pointer"
+                            className={`w-10 h-10 rounded-full text-white flex items-center justify-center transition-all shadow-lg cursor-pointer ${
+                              isDev && image.user_id !== userId
+                                ? 'bg-orange-500 hover:bg-orange-600'
+                                : 'bg-red-500 hover:bg-red-600'
+                            }`}
+                            title={isDev && image.user_id !== userId ? 'ลบ (Dev Mode)' : 'ลบ'}
                           >
                             <svg
                               className="w-5 h-5"
