@@ -9,6 +9,7 @@ const RealFakeGuide = lazy(() => import('./pages/RealFakeGuide'));
 const MarqueePage = lazy(() => import('./pages/MarqueePage'));
 const DraggableCardPage = lazy(() => import('./pages/DraggableCardPage'));
 const MacbookScrollPage = lazy(() => import('./pages/MacbookScrollPage'));
+const MVPage = lazy(() => import('./pages/MVPage'));
 
 // ฟังก์ชัน smooth scroll ที่ทำงานได้ทุก browser
 const smoothScrollTo = (targetY: number) => {
@@ -83,6 +84,7 @@ function App() {
   const showMarquee = location.pathname === '/3d';
   const showDraggableCard = location.pathname === '/cards';
   const showMacbook = location.pathname === '/macbook';
+  const showMV = location.pathname === '/mv';
   
   // ฟังก์ชันอัปเดต URL
   const updateURL = (page: number) => {
@@ -187,7 +189,7 @@ function App() {
 
   // ซ่อน scroll ของ body เมื่อเปิด modal full-screen
   useEffect(() => {
-    if (showApiDocs || showReportPage || showRealFakeGuide || showMarquee || showDraggableCard || showMacbook) {
+    if (showApiDocs || showReportPage || showRealFakeGuide || showMarquee || showDraggableCard || showMacbook || showMV) {
       document.documentElement.classList.add('modal-open');
     } else {
       document.documentElement.classList.remove('modal-open');
@@ -195,7 +197,7 @@ function App() {
     return () => {
       document.documentElement.classList.remove('modal-open');
     };
-  }, [showApiDocs, showReportPage, showRealFakeGuide, showMarquee, showDraggableCard, showMacbook]);
+  }, [showApiDocs, showReportPage, showRealFakeGuide, showMarquee, showDraggableCard, showMacbook, showMV]);
 
   useEffect(() => {
     if (toast) {
@@ -1290,7 +1292,7 @@ function App() {
                         type="text"
                         value={newUserName}
                         onChange={(e) => setNewUserName(e.target.value)}
-                        placeholder="ชื่อใหม่..."
+                        placeholder={`ชื่อปัจจุบัน: ${userName}`}
                         autoFocus
                         className={`w-full px-4 py-3 rounded-xl border outline-none transition-all ${
                           theme === 'dark'
@@ -1302,6 +1304,14 @@ function App() {
                         <button
                           onClick={() => {
                             if (newUserName.trim()) {
+                              // ถ้าชื่อเป็น dev ต้องใส่ PIN ก่อน
+                              if (newUserName.trim().toLowerCase() === 'dev') {
+                                setPendingDevName(newUserName.trim());
+                                setShowDevPinPrompt(true);
+                                setEditingName(false);
+                                setNewUserName('');
+                                return;
+                              }
                               setUserName(newUserName.trim());
                               localStorage.setItem('userName', newUserName.trim());
                               setEditingName(false);
@@ -1350,7 +1360,7 @@ function App() {
                       <button
                         onClick={() => {
                           setEditingName(true);
-                          setNewUserName(userName);
+                          setNewUserName('');
                         }}
                         className={`px-4 py-3 rounded-xl font-medium transition-all ${
                           theme === 'dark'
@@ -1430,6 +1440,16 @@ function App() {
           <MacbookScrollPage 
             theme={theme}
             images={images.map(img => img.url)}
+            onClose={() => navigate('/')} 
+          />
+        </Suspense>
+      )}
+
+      {/* MV Page */}
+      {showMV && (
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-black flex items-center justify-center"><div className="text-white">Loading...</div></div>}>
+          <MVPage 
+            theme={theme}
             onClose={() => navigate('/')} 
           />
         </Suspense>
@@ -2083,6 +2103,16 @@ function App() {
                 Macbook
               </button>
               <button
+                onClick={() => navigate('/mv')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                  theme === 'dark'
+                    ? 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                MV
+              </button>
+              <button
                 onClick={() => navigate('/guide')}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
                   theme === 'dark'
@@ -2248,6 +2278,16 @@ function App() {
                   }`}
                 >
                   Macbook
+                </button>
+                <button
+                  onClick={() => { navigate('/mv'); setShowMobileMenu(false); }}
+                  className={`px-3 py-2.5 rounded-md text-sm font-medium text-left transition-colors cursor-pointer ${
+                    theme === 'dark'
+                      ? 'text-slate-300 hover:text-white hover:bg-slate-800'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  MV
                 </button>
                 <button
                   onClick={() => { navigate('/guide'); setShowMobileMenu(false); }}

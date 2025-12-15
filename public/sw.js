@@ -39,6 +39,16 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Skip video files - let browser handle natively
+  if (
+    request.destination === 'video' ||
+    url.pathname.endsWith('.mp4') ||
+    url.pathname.endsWith('.webm') ||
+    url.pathname.endsWith('.mov')
+  ) {
+    return;
+  }
+
   // Cache images from Supabase storage
   if (
     request.destination === 'image' ||
